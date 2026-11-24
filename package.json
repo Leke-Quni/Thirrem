@@ -14,8 +14,10 @@
     "build": "yarn workspace @thirrem/api build",
     "dev": "yarn db:up && concurrently --names api,rider --prefix-colors magenta,cyan --kill-others-on-fail \"yarn dev:api\" \"yarn dev:rider\"",
     "stop": "bash scripts/stop.sh",
-    "dev:api": "yarn build && yarn workspace @thirrem/api start",
-    "dev:rider": "yarn workspace @thirrem/rider dev"
+    "dev:api": "yarn build && yarn workspace @thirrem/api migrate && yarn workspace @thirrem/api start",
+    "dev:rider": "yarn workspace @thirrem/rider dev",
+    "demo:up": "bash scripts/demo-up.sh",
+    "demo:down": "bash scripts/demo-down.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

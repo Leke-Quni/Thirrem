@@ -8,9 +8,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'yarn workspace @thirrem/api build && yarn workspace @thirrem/api start',
+      command: 'yarn workspace @thirrem/api build && yarn workspace @thirrem/api migrate && yarn workspace @thirrem/api start',
       url: 'http://localhost:3100/health',
-      env: { PORT: '3100' },
+      env: { PORT: '3100', AUTH_RATE_LIMIT: '10000' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

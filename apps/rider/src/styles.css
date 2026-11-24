@@ -215,3 +215,6 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
   .auth-route { animation: none; stroke-dashoffset: 0; }
   .auth-pin { animation: none; opacity: 1; }
 }
+.badge.status.online b { background: #2e9d5b; }
+.badge.status.offline b { background: #c0453a; }
+.badge.status.checking b { background: var(--muted); }

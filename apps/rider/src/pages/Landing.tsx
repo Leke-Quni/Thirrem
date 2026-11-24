@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { MapIllustration } from '../components/MapIllustration';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { useDemoStatus } from '../demo-status';
 
 const REAL = [
   'A map of Gjakova built from OpenStreetMap',
@@ -74,7 +75,14 @@ const FAQ = [
   },
 ];
 
+const STATUS_TEXT = {
+  checking: 'Checking the live demo...',
+  online: 'Live demo is online',
+  offline: 'Live demo is offline right now. Sign-up and login are paused.',
+} as const;
+
 export function Landing() {
+  const demoStatus = useDemoStatus();
   return (
     <div className="page">
       <div className="wrap">
@@ -101,6 +109,9 @@ export function Landing() {
           <div>
             <span className="badge">
               <b /> Simulated demo. No real rides, drivers or money.
+            </span>{' '}
+            <span className={`badge status ${demoStatus}`} role="status">
+              <b /> {STATUS_TEXT[demoStatus]}
             </span>
             <h1>Ride-hailing you can try alone.</h1>
             <p className="lead">

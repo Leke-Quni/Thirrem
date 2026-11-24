@@ -1,11 +1,15 @@
-import { Injectable, type OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import pg from 'pg';
+import type { AppConfig } from '../config/app-config.js';
+import { APP_CONFIG } from '../config/app-config.provider.js';
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
-  private readonly pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL ?? 'postgres://thirrem:thirrem@localhost:5433/thirrem',
-  });
+  private readonly pool: pg.Pool;
+
+  constructor(@Inject(APP_CONFIG) config: AppConfig) {
+    this.pool = new pg.Pool({ connectionString: config.databaseUrl });
+  }
 
   async ping(): Promise<void> {
     await this.pool.query('SELECT 1');

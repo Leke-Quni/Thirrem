@@ -1,5 +1,10 @@
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { type AppConfig, loadConfig } from '../../src/config/app-config.js';
+import { APP_CONFIG } from '../../src/config/app-config.provider.js';
+import { configureApp } from '../../src/config/configure-app.js';
+import { RATE_LIMIT, type RateLimitOptions } from '../../src/security/rate-limiter.js';
 import { AppModule } from '../../src/app.module.js';
 import { SimulationClock } from '../../src/simulation-clock/simulation-clock.js';
 import { ROAD_GRAPH, type RoadGraph } from '../../src/road-graph/road-graph.js';
@@ -16,11 +21,17 @@ export class ManualClock extends SimulationClock {
   }
 }
 
-export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph } = {}): Promise<INestApplication> {
-  let builder = Test.createTestingModule({ imports: [AppModule] });
+export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
+  const config = { ...loadConfig(), ...options.config };
+  let builder = Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(APP_CONFIG)
+    .useValue(config)
+    .overrideProvider(RATE_LIMIT)
+    .useValue(options.rateLimit ?? { limit: 10_000, windowMs: 60_000 });
   if (options.clock) builder = builder.overrideProvider(SimulationClock).useValue(options.clock);
   if (options.roadGraph) builder = builder.overrideProvider(ROAD_GRAPH).useValue(options.roadGraph);
-  const app = (await builder.compile()).createNestApplication();
+  const app = (await builder.compile()).createNestApplication<NestExpressApplication>();
+  configureApp(app, config);
   await app.init();
   return app;
 }
