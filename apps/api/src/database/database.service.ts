@@ -11,6 +11,10 @@ export class DatabaseService implements OnModuleDestroy {
     await this.pool.query('SELECT 1');
   }
 
+  query<Row extends pg.QueryResultRow = pg.QueryResultRow>(text: string, values?: unknown[]): Promise<pg.QueryResult<Row>> {
+    return this.pool.query<Row>(text, values);
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.pool.end();
   }

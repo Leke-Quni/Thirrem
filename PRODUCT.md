@@ -22,7 +22,7 @@ A ride-hailing platform a visitor can run entirely alone: three independent apps
 
 ## Operating Context
 - Three separate web apps, each with its own landing page, signup and Sandbox: Rider, Driver, Admin. Desktop-first; visitors open three windows to try all three.
-- A Sandbox is a private, self-contained simulation per visitor and app. It starts on use, stops after 15 minutes of inactivity, is discarded after 24 hours, and at most 30 run at once. Accounts persist; there is no guest mode and no email verification.
+- A Sandbox is a private, self-contained simulation per visitor and app. It starts on use, stops after 15 minutes of inactivity, is discarded after 24 hours, and at most 30 run at once. Accounts persist; there is no guest mode. Riders confirm their email address through a verification email sent over Google SMTP from a dedicated Gmail account (see `docs/adr/0002-email-verification-via-google-smtp.md`, issue #30).
 - Rides run in real time by default, with other speed options. Each app has a simulation controls panel to force events (declines, cancellations, payment failure, SOS, a Driver going offline).
 - Ride Requests broadcast to Available Drivers of the requested Vehicle Type, chosen by quadtree cells plus neighbours (at least 5 Drivers, 20-second accept window, widening to the parent cell on timeout). The first Driver to accept wins.
 - Pickup and drop-off use named places or a pin the user drops, because street names are incomplete in OpenStreetMap.

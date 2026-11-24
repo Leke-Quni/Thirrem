@@ -1,0 +1,52 @@
+/* Thirrem design tokens: Premium & cinematic, dark first, purple accent. See DESIGN.md. */
+:root {
+  --font-head: 'Sora Variable', 'Sora', system-ui, sans-serif;
+  --font-body: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --radius: 16px;
+  --radius-btn: 12px;
+  --accent: #8b5cf6;
+  --accent-solid: #7c3aed;
+  --on-accent: #ffffff;
+}
+
+:root[data-theme='dark'] {
+  --bg: #07090d;
+  --fg: #eef1f6;
+  --muted: #98a1b3;
+  --card: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.12);
+  --map-bg: #0b1018;
+  --street: #1a2231;
+  --water: #0c1a2b;
+  --accent-text: #a78bfa;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  --glow: rgba(139, 92, 246, 0.22);
+  --field-bg: rgba(255, 255, 255, 0.04);
+  --raised: rgba(255, 255, 255, 0.1);
+  --ok: #4ade80;
+  --danger: #ff9b9b;
+  --danger-bg: rgba(255, 90, 90, 0.08);
+  --danger-border: rgba(255, 138, 138, 0.35);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #eef0f4;
+  --fg: #0c1018;
+  --muted: #566074;
+  --card: rgba(255, 255, 255, 0.7);
+  --border: rgba(10, 16, 28, 0.12);
+  --map-bg: #dfe4ec;
+  --street: #fbfcfe;
+  --water: #c4d8ec;
+  --accent-text: #6d28d9;
+  --shadow: 0 20px 60px rgba(20, 30, 60, 0.18);
+  --glow: rgba(139, 92, 246, 0.16);
+  --field-bg: rgba(255, 255, 255, 0.8);
+  --raised: #ffffff;
+  --ok: #15803d;
+  --danger: #b42323;
+  --danger-bg: rgba(180, 35, 35, 0.06);
+  --danger-border: rgba(180, 35, 35, 0.35);
+  color-scheme: light;
+}
