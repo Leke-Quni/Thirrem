@@ -17,7 +17,8 @@
     "dev:api": "yarn build && yarn workspace @thirrem/api migrate && yarn workspace @thirrem/api start",
     "dev:rider": "yarn workspace @thirrem/rider dev",
     "demo:up": "bash scripts/demo-up.sh",
-    "demo:down": "bash scripts/demo-down.sh"
+    "demo:down": "bash scripts/demo-down.sh",
+    "test:rider": "yarn workspace @thirrem/rider test"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

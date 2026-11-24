@@ -139,7 +139,7 @@ test.describe('Rider accounts', () => {
       test(`is sent to the home page when they go to ${path} by hand`, async ({ page }) => {
         await page.goto(path);
         await expect(page).toHaveURL(/\/home$/);
-        await expect(page.getByRole('heading', { name: /you are logged in/i })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
       });
     }
 
@@ -147,7 +147,7 @@ test.describe('Rider accounts', () => {
       await page.goto('/home');
       await page.getByRole('link', { name: 'Thirrem home' }).click();
       await expect(page).toHaveURL(/\/home$/);
-      await expect(page.getByRole('heading', { name: /you are logged in/i })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
     });
 
     test('can still reach the landing page', async ({ page }) => {
@@ -281,5 +281,305 @@ test.describe('Rider login and signup pages', () => {
   test('keeps the login page free of signup-only password hints', async ({ page }) => {
     await page.goto('/login');
     await expect(page.getByRole('status')).toHaveCount(0);
+  });
+});
+
+test.describe('Rider ride planner', () => {
+  const route = {
+    distanceM: 1850,
+    durationS: 241,
+    geometry: [
+      [20.4308, 42.3803],
+      [20.4219, 42.3712],
+    ],
+  };
+
+  async function signUpAndOpenPlanner(page: import('@playwright/test').Page, street: string | null = null) {
+    await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street } }));
+    await page.goto('/signup');
+    await page.getByLabel('Email').fill(newEmail());
+    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Sign up' }).click();
+    await expect(page).toHaveURL(/\/home$/);
+    await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
+  }
+
+  test('shows the page shell and its own loader straight away on a slow connection, instead of a blank page', async ({ page }) => {
+    await signUpAndOpenPlanner(page);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/rider/me', async (r) => {
+      await gate;
+      await r.continue();
+    });
+
+    await page.reload();
+
+    await expect(page.getByRole('link', { name: /thirrem/i }).first()).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: /loading your ride planner/i })).toBeAttached();
+    await expect(page.locator('.route-loader')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /plan your ride/i })).toHaveCount(0);
+
+    release();
+    await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
+  });
+
+  test('shows the route loader over the map until the map has loaded', async ({ page }) => {
+    await page.route('**tiles.openfreemap.org/**', (r) => new Promise((resolve) => setTimeout(resolve, 1500)).then(() => r.continue()));
+    await page.goto('/signup');
+    await page.getByLabel('Email').fill(newEmail());
+    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Sign up' }).click();
+
+    await expect(page.locator('.map-card .route-loader')).toBeVisible();
+    await expect(page.getByText('Loading the map…')).toBeVisible();
+    await expect(page.locator('.map-card .route-loader')).toBeHidden({ timeout: 30_000 });
+  });
+
+  test('shows the planner with both pins asked for, before any pin is placed', async ({ page }) => {
+    await signUpAndOpenPlanner(page);
+
+    await expect(page.getByText('Pickup Point', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: /search for the drop-off point/i })).toBeVisible();
+    await expect(page.getByText('Drop-off Point', { exact: true })).toBeVisible();
+    await expect(page.getByText(/appear once both pins are placed/i)).toBeVisible();
+  });
+
+  test('drops a Pickup Point and a Drop-off Point by clicking the map, then shows the route distance and time', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    const map = page.getByRole('application', { name: /map/i });
+    const box = (await map.boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /drop-off point pin/i })).toBeVisible();
+    await expect(page.getByText('1.9 km')).toBeVisible();
+    await expect(page.getByText('4 min')).toBeVisible();
+  });
+
+  test('keeps the map to a card beside the planner, not the whole screen', async ({ page }) => {
+    await signUpAndOpenPlanner(page);
+
+    const map = (await page.locator('.map-card').boundingBox())!;
+    const viewport = page.viewportSize()!;
+
+    expect(map.width).toBeLessThan(viewport.width - 380);
+    expect(map.height).toBeLessThan(viewport.height);
+  });
+
+  test('keeps the planner card and the map card the same size side by side', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+
+    const sizes = async () => {
+      const planner = (await page.locator('.planner').boundingBox())!;
+      const map = (await page.locator('.map-card').boundingBox())!;
+      return { planner, map };
+    };
+    const before = await sizes();
+    expect(Math.abs(before.planner.height - before.map.height)).toBeLessThan(1);
+    expect(Math.abs(before.planner.y - before.map.y)).toBeLessThan(1);
+
+    const box = before.map;
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.6);
+    await expect(page.getByText('1.9 km')).toBeVisible();
+
+    const after = await sizes();
+    expect(Math.abs(after.planner.height - after.map.height)).toBeLessThan(1);
+  });
+
+  test('searches for a street name and sets the Pickup Point from the chosen result', async ({ page }) => {
+    await page.route('**/rider/places**', (r) =>
+      r.fulfill({ json: [{ name: 'Rruga Bajram Curri', detail: 'Gjakovë, Kosovo', lat: 42.3803, lon: 20.4308 }] }),
+    );
+    await signUpAndOpenPlanner(page);
+
+    await page.getByRole('combobox', { name: /search for the pickup point/i }).fill('Bajram Curri');
+    await page.getByRole('option', { name: /rruga bajram curri/i }).click();
+
+    await expect(page.getByText('Rruga Bajram Curri, Gjakovë, Kosovo')).toBeVisible();
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+  });
+
+  test('chooses a search result with the keyboard for the Drop-off Point', async ({ page }) => {
+    await page.route('**/rider/places**', (r) =>
+      r.fulfill({ json: [{ name: 'Hospital', detail: 'Gjakovë, Kosovo', lat: 42.37, lon: 20.42 }] }),
+    );
+    await signUpAndOpenPlanner(page);
+
+    const search = page.getByRole('combobox', { name: /search for the drop-off point/i });
+    await search.fill('Hospital');
+    await expect(page.getByRole('option', { name: /hospital/i })).toBeVisible();
+    await search.press('Enter');
+
+    await expect(page.getByText('Hospital, Gjakovë, Kosovo')).toBeVisible();
+    await expect(page.getByRole('button', { name: /drop-off point pin/i })).toBeVisible();
+  });
+
+  test('tells the Rider to click the map when a search finds no street name', async ({ page }) => {
+    await page.route('**/rider/places**', (r) => r.fulfill({ json: [] }));
+    await signUpAndOpenPlanner(page);
+
+    await page.getByRole('combobox', { name: /search for the drop-off point/i }).fill('Nowhere road');
+
+    await expect(page.getByText(/no streets or places match.*click the map to drop a pin/i)).toBeVisible();
+  });
+
+  test('says plainly when search is unavailable and still lets the Rider click the map', async ({ page }) => {
+    await page.route('**/rider/places**', (r) => r.fulfill({ status: 503, json: { message: 'Search is unavailable right now. Click the map to place a pin instead.' } }));
+    await signUpAndOpenPlanner(page);
+
+    await page.getByRole('combobox', { name: /search for the pickup point/i }).fill('Bajram');
+
+    await expect(page.getByText(/search is unavailable right now/i)).toBeVisible();
+  });
+
+  test('shows the Drop-off Point as a pointed location pin', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    const box = (await page.locator('.map-card').boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.6);
+
+    await expect(page.locator('.pin-dropoff svg path')).toBeVisible();
+  });
+
+  test('lets a keyboard user place both pins by moving the map and pressing Enter at the centre mark', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+
+    await page.locator('canvas.maplibregl-canvas').focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.locator('.map-crosshair')).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+
+    await expect(page.getByRole('button', { name: /drop-off point pin/i })).toBeVisible();
+    await expect(page.getByText('1.9 km')).toBeVisible();
+  });
+
+  test('moves a pin with the arrow keys and asks for a new route', async ({ page }) => {
+    let requests = 0;
+    await page.route('**/rider/route', (r) => {
+      requests += 1;
+      return r.fulfill({ json: route });
+    });
+    await signUpAndOpenPlanner(page);
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+    await expect(page.getByText('1.9 km')).toBeVisible();
+
+    await page.getByRole('button', { name: /pickup point pin/i }).focus();
+    await page.keyboard.press('ArrowRight');
+
+    await expect.poll(() => requests).toBe(2);
+  });
+
+  test('says plainly when no route exists between the pins and lets the Rider try again', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ status: 422, json: { message: 'There is no road route between these two points. Try moving a pin closer to a street.' } }));
+    await signUpAndOpenPlanner(page);
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+
+    await expect(page.getByRole('alert')).toContainText(/no road route/i);
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+
+  test('fills the search box of a pin dropped on the map with its street name', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page, 'Skënderbeu, Gjakova');
+    const box = (await page.locator('.map-card').boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue('Skënderbeu, Gjakova');
+  });
+
+  test('shows a finding message, never the coordinates, while the street name is still loading', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/rider/places/reverse**', async (r) => {
+      await gate;
+      await r.fulfill({ json: { street: 'Skënderbeu, Gjakova' } });
+    });
+    const box = (await page.locator('.map-card').boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    const search = page.getByRole('combobox', { name: /search for the pickup point/i });
+    await expect(search).toHaveValue('Finding the street name…');
+    await expect(search).not.toHaveValue(/\d+\.\d{5}/);
+    release();
+    await expect(search).toHaveValue('Skënderbeu, Gjakova');
+  });
+
+  test('fills the search box with the point when the map has no street name there', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page, null);
+    const box = (await page.locator('.map-card').boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue(/^-?\d+\.\d{5}, -?\d+\.\d{5}$/);
+  });
+
+  test('puts the street name of the pin in the box again when the Rider leaves it half typed', async ({ page }) => {
+    await page.route('**/rider/places?**', (r) => r.fulfill({ json: [] }));
+    await signUpAndOpenPlanner(page, 'Skënderbeu, Gjakova');
+    const box = (await page.locator('.map-card').boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+    const search = page.getByRole('combobox', { name: /search for the pickup point/i });
+    await expect(search).toHaveValue('Skënderbeu, Gjakova');
+
+    await search.fill('Bajr');
+    await page.getByRole('heading', { name: /plan your ride/i }).click();
+
+    await expect(search).toHaveValue('Skënderbeu, Gjakova');
+  });
+
+  test.describe('with location allowed', () => {
+    test.use({ geolocation: { latitude: 51.5072, longitude: -0.1276 }, permissions: ['geolocation'] });
+
+    test('puts the Pickup Point at the device location by itself, anywhere in the world', async ({ page }) => {
+      await signUpAndOpenPlanner(page, 'Nëna Terezë, London');
+
+      await expect(page.getByText('Your location', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+      await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue('Nëna Terezë, London');
+    });
+
+    test('fills the Pickup Point search with the device point when the map has no street name there', async ({ page }) => {
+      await signUpAndOpenPlanner(page, null);
+
+      await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue('51.50720, -0.12760');
+    });
+  });
+
+  test.describe('with location blocked', () => {
+    test.use({ permissions: [] });
+
+    test('explains how to carry on when the Rider blocks location access', async ({ page, context }) => {
+      await context.clearPermissions();
+      await page.addInitScript(() => {
+        navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+      });
+      await signUpAndOpenPlanner(page);
+
+      await expect(page.getByText(/location access is blocked.*click the map/i)).toBeVisible();
+      await expect(page.getByText('Not set').first()).toBeVisible();
+    });
   });
 });

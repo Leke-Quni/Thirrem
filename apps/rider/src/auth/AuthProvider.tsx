@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { authApi } from './auth-api';
 
-const TOKEN_KEY = 'thirrem-rider-token';
+export const TOKEN_KEY = 'thirrem-rider-token';
 
 interface AuthState {
   email: string | null;
