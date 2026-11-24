@@ -1,0 +1,31 @@
+name: CI
+
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: thirrem
+          POSTGRES_PASSWORD: thirrem
+          POSTGRES_DB: thirrem
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U thirrem -d thirrem"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn test:api
+      - run: yarn playwright install --with-deps chromium
+      - run: yarn test:e2e

@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: thirrem
+      POSTGRES_PASSWORD: thirrem
+      POSTGRES_DB: thirrem
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thirrem -d thirrem"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
