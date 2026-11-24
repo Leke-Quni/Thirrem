@@ -10,13 +10,17 @@ import { DatabaseService } from './database/database.service.js';
 import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
-import { AuthRateLimitGuard, RATE_LIMIT } from './security/rate-limiter.js';
+import { CachingRoutingService } from './routing/caching-routing.service.js';
+import { OsrmRoutingService } from './routing/osrm-routing.service.js';
+import { RiderRouteController } from './routing/rider-route.controller.js';
+import { RoutingService } from './routing/routing.service.js';
+import { AuthRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard } from './security/rate-limiter.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -26,6 +30,13 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     { provide: AccountRepository, useClass: PgAccountRepository },
     { provide: PasswordHasher, useClass: ScryptPasswordHasher },
     { provide: SimulationClock, useClass: SystemClock },
+    {
+      provide: RoutingService,
+      useFactory: (config: AppConfig) => new CachingRoutingService(new OsrmRoutingService(config.osrmUrl)),
+      inject: [APP_CONFIG],
+    },
+    RouteRateLimitGuard,
+    { provide: ROUTE_RATE_LIMIT, useFactory: (config: AppConfig) => config.routeRateLimit, inject: [APP_CONFIG] },
     { provide: ROAD_GRAPH, useValue: emptyRoadGraph },
   ],
 })

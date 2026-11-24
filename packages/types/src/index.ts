@@ -17,3 +17,14 @@ export interface SessionResponse {
 export interface MeResponse {
   email: string;
 }
+
+export interface RouteResponse {
+  distanceM: number;
+  durationS: number;
+  geometry: Array<[number, number]>;
+}
+
+export interface Coordinate {
+  lat: number;
+  lon: number;
+}
