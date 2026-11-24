@@ -7,5 +7,7 @@ const originMatcher = (pattern: string) => new RegExp(`^${pattern.split('*').map
 export function configureApp(app: NestExpressApplication, config: AppConfig): void {
   if (config.trustProxy) app.set('trust proxy', true);
   const matchers = config.corsOrigins.map(originMatcher);
-  app.enableCors({ origin: (origin, callback) => callback(null, !origin || matchers.some((m) => m.test(origin))) });
+  app.enableCors({
+    origin: (origin, callback) => callback(null, !origin || matchers.some((m) => m.test(origin))),
+  });
 }

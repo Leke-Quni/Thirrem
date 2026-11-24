@@ -7,19 +7,21 @@ export interface RateLimitOptions {
 }
 
 export const RATE_LIMIT = Symbol('RATE_LIMIT');
+export const ROUTE_RATE_LIMIT = Symbol('ROUTE_RATE_LIMIT');
+export const SEARCH_RATE_LIMIT = Symbol('SEARCH_RATE_LIMIT');
 
 interface Window {
   startedAt: number;
   count: number;
 }
 
-@Injectable()
-export class AuthRateLimitGuard implements CanActivate {
+abstract class RateLimitGuard implements CanActivate {
   private readonly windows = new Map<string, Window>();
+  protected abstract readonly message: string;
 
   constructor(
     private readonly clock: SimulationClock,
-    @Inject(RATE_LIMIT) private readonly options: RateLimitOptions,
+    private readonly options: RateLimitOptions,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -32,7 +34,7 @@ export class AuthRateLimitGuard implements CanActivate {
     window.count += 1;
     this.windows.set(key, window);
     if (window.count > this.options.limit) {
-      throw new HttpException('Too many attempts. Please wait a minute and try again.', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(this.message, HttpStatus.TOO_MANY_REQUESTS);
     }
     return true;
   }
@@ -41,5 +43,32 @@ export class AuthRateLimitGuard implements CanActivate {
     for (const [key, window] of this.windows) {
       if (now - window.startedAt >= this.options.windowMs) this.windows.delete(key);
     }
+  }
+}
+
+@Injectable()
+export class AuthRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many attempts. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
+  }
+}
+
+@Injectable()
+export class RouteRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many route requests. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(ROUTE_RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
+  }
+}
+
+@Injectable()
+export class SearchRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many searches. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(SEARCH_RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
   }
 }
