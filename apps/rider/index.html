@@ -5,12 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Thirrem: a simulated ride-hailing demo</title>
     <meta name="description" content="Try a full ride-hailing platform alone, on a real map. Everything is simulated: no real rides, drivers or money." />
+    <meta name="theme-color" content="#07090d" />
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
     <script>
-      document.documentElement.dataset.theme = localStorage.getItem('thirrem-theme') === 'light' ? 'light' : 'dark';
+      var light = localStorage.getItem('thirrem-theme') === 'light';
+      document.documentElement.dataset.theme = light ? 'light' : 'dark';
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#eef0f4' : '#07090d');
     </script>
+    <style>
+      html[data-theme='dark'] { background: #07090d; color: #98a1b3; color-scheme: dark; --boot-fg: #eef1f6; --boot-card: rgba(255, 255, 255, 0.05); --boot-border: rgba(255, 255, 255, 0.12); --boot-field: rgba(255, 255, 255, 0.04); --boot-raised: rgba(255, 255, 255, 0.1); --boot-map: #0b1018; --boot-track: rgba(255, 255, 255, 0.12); }
+      html[data-theme='light'] { background: #eef0f4; color: #566074; color-scheme: light; --boot-fg: #0c1018; --boot-card: rgba(255, 255, 255, 0.7); --boot-border: rgba(10, 16, 28, 0.12); --boot-field: rgba(255, 255, 255, 0.8); --boot-raised: #ffffff; --boot-map: #dfe4ec; --boot-track: rgba(10, 16, 28, 0.12); }
+      body { margin: 0; }
+      .boot-page { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; font: 15px system-ui, sans-serif; }
+      .boot-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--boot-border); background: var(--boot-card); }
+      .boot-logo { display: flex; gap: 10px; align-items: center; font-weight: 700; font-size: 22px; letter-spacing: -0.035em; color: var(--boot-fg); }
+      .boot-logo i { width: 14px; height: 14px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 14px #8b5cf6; }
+      .boot-icon { width: 40px; height: 40px; box-sizing: border-box; border-radius: 12px; border: 1px solid var(--boot-border); background: var(--boot-card); }
+      .boot-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .boot-layout { width: 100%; max-width: 1120px; margin: 0 auto; padding: 24px 28px 40px; box-sizing: border-box; display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: stretch; }
+      .boot-planner { box-sizing: border-box; min-height: 480px; padding: 22px; border-radius: 20px; background: var(--boot-card); border: 1px solid var(--boot-border); display: grid; gap: 14px; align-content: start; }
+      .boot-planner span { display: block; height: 44px; border-radius: 12px; background: linear-gradient(90deg, var(--boot-field), var(--boot-raised), var(--boot-field)); background-size: 200% 100%; animation: boot-shimmer 1.2s linear infinite; }
+      .boot-planner span.title { height: 28px; width: 55%; border-radius: 10px; }
+      .boot-planner span.text { height: 18px; width: 70%; border-radius: 10px; }
+      .boot-planner span.row { height: 66px; }
+      .boot-map { box-sizing: border-box; min-height: 480px; border-radius: 16px; background: var(--boot-map); border: 1px solid var(--boot-border); display: grid; place-content: center; justify-items: center; gap: 10px; }
+      .boot-map p { margin: 0; }
+      .boot-track, .boot-line { fill: none; stroke-linecap: round; stroke-width: 5; }
+      .boot-track { stroke: var(--boot-track); }
+      .boot-line { stroke: #8b5cf6; stroke-dasharray: 1; stroke-dashoffset: 1; animation: boot-draw 2.2s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+      .boot-dot { fill: #7c3aed; stroke: #fff; stroke-width: 3; }
+      .boot-pin { transform-box: fill-box; transform-origin: 50% 100%; animation: boot-pin 2.2s ease-in-out infinite; }
+      @keyframes boot-draw { 0% { stroke-dashoffset: 1; } 70%, 100% { stroke-dashoffset: 0; } }
+      @keyframes boot-pin { 0%, 55% { opacity: 0.35; transform: translateY(-4px) scale(0.9); } 75%, 100% { opacity: 1; transform: none; } }
+      @keyframes boot-shimmer { to { background-position: -200% 0; } }
+      @media (max-width: 900px) { .boot-layout { grid-template-columns: minmax(0, 1fr); padding: 16px 16px 32px; } .boot-map { order: -1; min-height: 0; height: clamp(300px, 46vh, 460px); } }
+      @media (prefers-reduced-motion: reduce) { .boot-line, .boot-pin, .boot-planner span { animation: none; } .boot-line { stroke-dashoffset: 0; } }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <template id="boot-home">
+      <div class="boot-page" aria-busy="true">
+        <header class="boot-bar">
+          <span class="boot-logo"><i></i>Thirrem</span>
+          <span class="boot-icon"></span>
+        </header>
+        <span class="boot-sr" role="status">Loading your ride planner…</span>
+        <main class="boot-layout">
+          <div class="boot-planner" aria-hidden="true">
+            <span class="title"></span>
+            <span class="text"></span>
+            <span class="row"></span>
+            <span></span>
+            <span class="row"></span>
+            <span></span>
+          </div>
+          <div class="boot-map" aria-hidden="true">
+            <svg width="220" height="130" viewBox="0 0 220 130">
+              <path class="boot-track" d="M34 100 C 78 100, 70 42, 112 56 S 160 78, 182 50" />
+              <path class="boot-line" d="M34 100 C 78 100, 70 42, 112 56 S 160 78, 182 50" pathLength="1" />
+              <circle class="boot-dot" cx="34" cy="100" r="9" />
+              <g transform="translate(165 8)">
+                <g class="boot-pin">
+                  <svg viewBox="0 0 34 44" width="34" height="44" overflow="visible">
+                    <path d="M17 43C17 43 3 27.5 3 16.5C3 8.5 9.3 2 17 2s14 6.5 14 14.5C31 27.5 17 43 17 43z" fill="#7c3aed" stroke="var(--boot-fg)" stroke-width="2.5" />
+                    <circle cx="17" cy="16.5" r="5.5" fill="var(--boot-fg)" />
+                  </svg>
+                </g>
+              </g>
+            </svg>
+            <p>Loading the map…</p>
+          </div>
+        </main>
+      </div>
+    </template>
+    <script>
+      if (/^\/home(\/|$)/.test(location.pathname)) {
+        document.getElementById('root').appendChild(document.getElementById('boot-home').content.cloneNode(true));
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

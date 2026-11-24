@@ -10,6 +10,7 @@ export function ThemeToggle() {
   const toggle = () => {
     document.documentElement.dataset.theme = next;
     localStorage.setItem(THEME_KEY, next);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'light' ? '#eef0f4' : '#07090d');
     setTheme(next);
   };
 
