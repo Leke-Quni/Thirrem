@@ -585,6 +585,73 @@ test.describe('Rider ride planner', () => {
 });
 
 test.describe('Rider first paint on a slow connection', () => {
+  const holdAppCode = async (page: import('@playwright/test').Page) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/src/main.tsx*', async (r) => {
+      await gate;
+      await r.continue();
+    });
+    return release;
+  };
+
+  test('shows the page shell on the dark background before any app code has arrived on /home, never a white screen', async ({ page }) => {
+    const release = await holdAppCode(page);
+
+    await page.goto('/home', { waitUntil: 'commit' });
+
+    await expect(page.locator('.boot-bar')).toBeVisible();
+    await expect(page.locator('.boot-planner')).toBeVisible();
+    await expect(page.locator('.boot-map')).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: /loading your ride planner/i })).toBeAttached();
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe('rgb(7, 9, 13)');
+
+    release();
+    await expect(page.locator('.boot-page')).toHaveCount(0);
+  });
+
+  test('keeps the early loader inside the map card instead of covering the whole page', async ({ page }) => {
+    await holdAppCode(page);
+
+    await page.goto('/home', { waitUntil: 'commit' });
+
+    const viewport = page.viewportSize()!;
+    const map = (await page.locator('.boot-map').boundingBox())!;
+    const loader = (await page.locator('.boot-map svg').first().boundingBox())!;
+    expect(map.width).toBeLessThan(viewport.width - 380);
+    expect(loader.x).toBeGreaterThanOrEqual(map.x);
+    expect(loader.x + loader.width).toBeLessThanOrEqual(map.x + map.width);
+    await expect(page.locator('.boot-loader')).toHaveCount(0);
+  });
+
+  test('uses the light background when the Rider chose light mode, with no loader on pages that are instant', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('thirrem-theme', 'light'));
+    const release = await holdAppCode(page);
+
+    await page.goto('/', { waitUntil: 'commit' });
+
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe('rgb(238, 240, 244)');
+    await expect(page.locator('.boot-page')).toHaveCount(0);
+    await expect(page.locator('.boot-loader')).toHaveCount(0);
+    release();
+  });
+
+  test('uses the light page shell on /home when the Rider chose light mode', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('thirrem-theme', 'light'));
+    await holdAppCode(page);
+
+    await page.goto('/home', { waitUntil: 'commit' });
+
+    await expect(page.locator('.boot-planner')).toBeVisible();
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe('rgb(238, 240, 244)');
+  });
+
+  test('sets the browser bar colour to match the page background', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#07090d');
+  });
+
   test('does not download the map code on pages that have no map', async ({ page }) => {
     const requested: string[] = [];
     page.on('request', (request) => requested.push(request.url()));
