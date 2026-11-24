@@ -27,5 +27,6 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn test:api
+      - run: yarn test:rider
       - run: yarn playwright install --with-deps chromium
       - run: yarn test:e2e

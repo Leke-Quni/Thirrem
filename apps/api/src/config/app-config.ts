@@ -4,6 +4,10 @@ export interface AppConfig {
   corsOrigins: string[];
   production: boolean;
   trustProxy: boolean;
+  osrmUrl: string;
+  photonUrl: string;
+  searchRateLimit: { limit: number; windowMs: number };
+  routeRateLimit: { limit: number; windowMs: number };
   authRateLimit: { limit: number; windowMs: number };
 }
 
@@ -26,6 +30,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     corsOrigins: production ? configured : [...DEV_CORS_ORIGINS, ...configured],
     production,
     trustProxy: env.TRUST_PROXY === 'true',
+    routeRateLimit: { limit: Number(env.ROUTE_RATE_LIMIT ?? 30), windowMs: 60_000 },
+    photonUrl: (env.PHOTON_URL ?? 'https://photon.komoot.io').replace(/\/$/, ''),
+    searchRateLimit: { limit: Number(env.SEARCH_RATE_LIMIT ?? 60), windowMs: 60_000 },
+    osrmUrl: (env.OSRM_URL ?? 'https://router.project-osrm.org').replace(/\/$/, ''),
     authRateLimit: { limit: Number(env.AUTH_RATE_LIMIT ?? 10), windowMs: 60_000 },
   };
 }

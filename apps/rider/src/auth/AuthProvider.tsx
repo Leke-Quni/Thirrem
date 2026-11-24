@@ -1,11 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { authApi } from './auth-api';
+import { shouldEndSession } from './session-check';
 
-const TOKEN_KEY = 'thirrem-rider-token';
+export const TOKEN_KEY = 'thirrem-rider-token';
 
 interface AuthState {
   email: string | null;
   loading: boolean;
+  unreachable: boolean;
+  retry(): void;
   signup(email: string, password: string): Promise<void>;
   login(email: string, password: string): Promise<void>;
   logout(): void;
@@ -17,15 +20,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => localStorage.getItem(TOKEN_KEY) !== null);
 
+  const [unreachable, setUnreachable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
+    let current = true;
+    setLoading(true);
+    setUnreachable(false);
     authApi
       .me(token)
-      .then((me) => setEmail(me.email))
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
-      .finally(() => setLoading(false));
-  }, []);
+      .then((me) => {
+        if (current) setEmail(me.email);
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        if (shouldEndSession(error)) localStorage.removeItem(TOKEN_KEY);
+        else setUnreachable(true);
+      })
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [attempt]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   const open = useCallback((session: { email: string; token: string }) => {
     localStorage.setItem(TOKEN_KEY, session.token);
@@ -36,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       email,
       loading,
+      unreachable,
+      retry,
       signup: async (e, p) => open(await authApi.signup(e, p)),
       login: async (e, p) => open(await authApi.login(e, p)),
       logout: () => {
@@ -43,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setEmail(null);
       },
     }),
-    [email, loading, open],
+    [email, loading, unreachable, retry, open],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
