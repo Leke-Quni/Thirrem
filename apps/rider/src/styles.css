@@ -331,3 +331,4 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
   .route-loader-pin { animation: none; }
   .skeleton-line, .skeleton-block, .skeleton-field { animation: none; }
 }
+.retry-session { margin-top: 16px; }

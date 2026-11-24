@@ -664,3 +664,71 @@ test.describe('Rider first paint on a slow connection', () => {
     expect(requested.filter((url) => /maplibre/i.test(url))).toEqual([]);
   });
 });
+
+test.describe('Rider session check on the home page', () => {
+  async function signedInPage(page: import('@playwright/test').Page) {
+    const response = await page.request.post('/rider/auth/signup', { data: { email: newEmail(), password } });
+    const { token } = await response.json();
+    await page.addInitScript((value) => {
+      if (sessionStorage.getItem('rider-session-seeded')) return;
+      sessionStorage.setItem('rider-session-seeded', 'yes');
+      localStorage.setItem('thirrem-rider-token', value);
+    }, token);
+    return token as string;
+  }
+  const storedToken = (page: import('@playwright/test').Page) => page.evaluate(() => localStorage.getItem('thirrem-rider-token'));
+
+  test('never logs the Rider out when the page is reloaded many times in quick succession', async ({ page }) => {
+    await signedInPage(page);
+    await page.goto('/home');
+    await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
+    await page.route('**/rider/me', async (r) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await r.continue().catch(() => undefined);
+    });
+
+    for (let i = 0; i < 25; i += 1) {
+      await page.reload({ waitUntil: 'commit' }).catch(() => undefined);
+      await page.waitForTimeout(120);
+    }
+
+    await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible({ timeout: 30_000 });
+    expect(await storedToken(page)).not.toBeNull();
+  });
+
+  test('keeps the Rider logged in and offers a retry when the session check fails without a 401', async ({ page }) => {
+    await signedInPage(page);
+    let failing = true;
+    await page.route('**/rider/me', (r) => (failing ? r.abort() : r.continue()));
+
+    await page.goto('/home');
+
+    await expect(page.getByRole('alert')).toContainText(/could not reach thirrem/i);
+    await expect(page).toHaveURL(/\/home$/);
+    expect(await storedToken(page)).not.toBeNull();
+
+    failing = false;
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
+  });
+
+  test('keeps the Rider logged in when the server answers 503 to the session check', async ({ page }) => {
+    await signedInPage(page);
+    await page.route('**/rider/me', (r) => r.fulfill({ status: 503, json: { message: 'Service Unavailable' } }));
+
+    await page.goto('/home');
+
+    await expect(page.getByRole('alert')).toContainText(/could not reach thirrem/i);
+    expect(await storedToken(page)).not.toBeNull();
+  });
+
+  test('ends the session and sends the Rider to login when the server answers 401', async ({ page }) => {
+    await signedInPage(page);
+    await page.route('**/rider/me', (r) => r.fulfill({ status: 401, json: { message: 'Unauthorized' } }));
+
+    await page.goto('/home');
+
+    await expect(page).toHaveURL(/\/login$/);
+    expect(await storedToken(page)).toBeNull();
+  });
+});

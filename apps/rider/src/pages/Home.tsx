@@ -11,9 +11,10 @@ import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
 import { useRoute } from '../map/useRoute';
 import { HomeSkeleton } from './HomeSkeleton';
+import { SessionUnavailable } from './SessionUnavailable';
 
 export function Home() {
-  const { email, loading, logout } = useAuth();
+  const { email, loading, unreachable, retry: retrySession, logout } = useAuth();
   const navigate = useNavigate();
   const loggingOut = useRef(false);
   const [plan, dispatch] = useReducer(planReducer, initialPlan);
@@ -55,6 +56,7 @@ export function Home() {
   }, [mapState]);
 
   if (loading) return <HomeSkeleton />;
+  if (unreachable) return <SessionUnavailable onRetry={retrySession} />;
   if (!email) return loggingOut.current ? null : <Navigate to="/login" replace />;
 
   return (
