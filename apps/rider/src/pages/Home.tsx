@@ -1,4 +1,4 @@
-import type { Coordinate } from '@thirrem/types';
+import type { Coordinate, PlaceResult } from '@thirrem/types';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -41,6 +41,12 @@ export function Home() {
     }
   };
 
+  const choosePlace = (slot: 'pickup' | 'dropoff', place: PlaceResult) => {
+    const point = { lat: place.lat, lon: place.lon };
+    dispatch({ type: 'choose', slot, point: { ...point, label: place.detail ? `${place.name}, ${place.detail}` : place.name } });
+    setFocus((current) => ({ point, nonce: (current?.nonce ?? 0) + 1 }));
+  };
+
   const askedForLocation = useRef(false);
   useEffect(() => {
     if (mapState !== 'ready' || askedForLocation.current) return;
@@ -79,6 +85,7 @@ export function Home() {
           locating={locating}
           locateMessage={locateMessage}
           onLocate={() => findMe()}
+          onChoosePlace={choosePlace}
           onSelect={(slot) => dispatch({ type: 'select', slot })}
           onRemove={(slot) => dispatch({ type: 'remove', slot })}
           onRetry={retry}

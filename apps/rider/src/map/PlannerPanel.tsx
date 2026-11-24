@@ -1,7 +1,11 @@
+import type { PlaceResult } from '@thirrem/types';
 import { formatDistance, formatDuration } from './format';
+import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
+import { pinText, type StreetLookup } from './pin-text';
 import type { PinSlot, Plan, PlanPoint } from './planner';
 import type { RouteState } from './useRoute';
+import { useStreetName } from './useStreetName';
 
 interface PlannerPanelProps {
   plan: Plan;
@@ -12,6 +16,7 @@ interface PlannerPanelProps {
   onLocate(): void;
   onSelect(slot: PinSlot): void;
   onRemove(slot: PinSlot): void;
+  onChoosePlace(slot: PinSlot, place: PlaceResult): void;
   onRetry(): void;
 }
 
@@ -20,7 +25,7 @@ const SLOTS: Array<{ slot: PinSlot; label: string }> = [
   { slot: 'dropoff', label: 'Drop-off Point' },
 ];
 
-const describe = (point: PlanPoint) => (point.origin === 'device' ? 'Your location' : `${point.lat.toFixed(4)}, ${point.lon.toFixed(4)}`);
+const describe = (point: PlanPoint) => (point.origin === 'device' ? 'Your location' : (point.label ?? 'Set on the map'));
 
 function Glyph({ slot }: { slot: PinSlot }) {
   if (slot === 'pickup') return <span className="pin-glyph pin-pickup" aria-hidden="true" />;
@@ -32,11 +37,13 @@ function Glyph({ slot }: { slot: PinSlot }) {
   );
 }
 
-export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onRetry }: PlannerPanelProps) {
+export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry }: PlannerPanelProps) {
+  const near = plan.pickup ?? plan.dropoff;
+  const streets: Record<PinSlot, StreetLookup> = { pickup: useStreetName(plan.pickup), dropoff: useStreetName(plan.dropoff) };
   return (
     <section className="planner" aria-labelledby="planner-title">
       <h1 id="planner-title">Plan your ride</h1>
-      <p className="planner-lead">Drop a pin for where you start and where you are going. Drag a pin to adjust it.</p>
+      <p className="planner-lead">Search for a street or place, or click the map to drop a pin where there is no street name.</p>
 
       <ul className="pin-rows">
         {SLOTS.map(({ slot, label }) => {
@@ -50,7 +57,7 @@ export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, o
                   <Glyph slot={slot} />
                   <span className="pin-row-text">
                     <strong>{label}</strong>
-                    <span>{point ? describe(point) : finding ? 'Finding your location…' : active ? 'Click the map to place it' : 'Not set'}</span>
+                    <span>{point ? describe(point) : finding ? 'Finding your location…' : active ? 'Search below or click the map' : 'Not set'}</span>
                   </span>
                 </button>
                 {slot === 'pickup' && (
@@ -74,6 +81,7 @@ export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, o
                   </button>
                 )}
               </div>
+              <PlaceSearch label={label} value={pinText(point, streets[slot])} near={near} disabled={!mapReady} onFocus={() => onSelect(slot)} onChoose={(place) => onChoosePlace(slot, place)} />
             </li>
           );
         })}

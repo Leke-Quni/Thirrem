@@ -55,16 +55,25 @@ describe('planReducer', () => {
     expect(plan.pickup).toEqual({ lat: 42.4, lon: 20.5 });
   });
 
-  it('chooses the Drop-off Point without touching the Pickup Point', () => {
-    const withPickup = planReducer(initialPlan, { type: 'place', point: a });
+  it('keeps the name of a place the Rider searched for, and drops it once the pin is dragged', () => {
+    const named = planReducer(initialPlan, { type: 'choose', slot: 'pickup', point: { ...a, label: 'Rruga Bajram Curri' } });
+    expect(named.pickup).toEqual({ ...a, label: 'Rruga Bajram Curri' });
 
-    const plan = planReducer(withPickup, { type: 'choose', slot: 'dropoff', point: b });
+    const dragged = planReducer(named, { type: 'move', slot: 'pickup', point: c });
 
-    expect(plan.pickup).toEqual(a);
-    expect(plan.dropoff).toEqual(b);
+    expect(dragged.pickup).toEqual(c);
   });
 
-  it('asks for the Drop-off Point next after the Pickup Point is chosen', () => {
+  it('chooses the Drop-off Point from a search without touching the Pickup Point', () => {
+    const withPickup = planReducer(initialPlan, { type: 'place', point: a });
+
+    const plan = planReducer(withPickup, { type: 'choose', slot: 'dropoff', point: { ...b, label: 'Hospital' } });
+
+    expect(plan.pickup).toEqual(a);
+    expect(plan.dropoff).toEqual({ ...b, label: 'Hospital' });
+  });
+
+  it('asks for the Drop-off Point next after the Pickup Point is chosen from a search', () => {
     const plan = planReducer(initialPlan, { type: 'choose', slot: 'pickup', point: a });
 
     expect(plan.active).toBe('dropoff');

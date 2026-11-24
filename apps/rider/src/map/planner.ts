@@ -3,6 +3,7 @@ import type { Coordinate } from '@thirrem/types';
 export type PinSlot = 'pickup' | 'dropoff';
 
 export interface PlanPoint extends Coordinate {
+  label?: string;
   origin?: 'device';
 }
 

@@ -294,7 +294,8 @@ test.describe('Rider ride planner', () => {
     ],
   };
 
-  async function signUpAndOpenPlanner(page: import('@playwright/test').Page) {
+  async function signUpAndOpenPlanner(page: import('@playwright/test').Page, street: string | null = null) {
+    await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street } }));
     await page.goto('/signup');
     await page.getByLabel('Email').fill(newEmail());
     await page.getByLabel('Password', { exact: true }).fill(password);
@@ -340,6 +341,8 @@ test.describe('Rider ride planner', () => {
     await signUpAndOpenPlanner(page);
 
     await expect(page.getByText('Pickup Point', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: /search for the drop-off point/i })).toBeVisible();
     await expect(page.getByText('Drop-off Point', { exact: true })).toBeVisible();
     await expect(page.getByText(/appear once both pins are placed/i)).toBeVisible();
   });
@@ -389,6 +392,52 @@ test.describe('Rider ride planner', () => {
 
     const after = await sizes();
     expect(Math.abs(after.planner.height - after.map.height)).toBeLessThan(1);
+  });
+
+  test('searches for a street name and sets the Pickup Point from the chosen result', async ({ page }) => {
+    await page.route('**/rider/places**', (r) =>
+      r.fulfill({ json: [{ name: 'Rruga Bajram Curri', detail: 'Gjakovë, Kosovo', lat: 42.3803, lon: 20.4308 }] }),
+    );
+    await signUpAndOpenPlanner(page);
+
+    await page.getByRole('combobox', { name: /search for the pickup point/i }).fill('Bajram Curri');
+    await page.getByRole('option', { name: /rruga bajram curri/i }).click();
+
+    await expect(page.getByText('Rruga Bajram Curri, Gjakovë, Kosovo')).toBeVisible();
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+  });
+
+  test('chooses a search result with the keyboard for the Drop-off Point', async ({ page }) => {
+    await page.route('**/rider/places**', (r) =>
+      r.fulfill({ json: [{ name: 'Hospital', detail: 'Gjakovë, Kosovo', lat: 42.37, lon: 20.42 }] }),
+    );
+    await signUpAndOpenPlanner(page);
+
+    const search = page.getByRole('combobox', { name: /search for the drop-off point/i });
+    await search.fill('Hospital');
+    await expect(page.getByRole('option', { name: /hospital/i })).toBeVisible();
+    await search.press('Enter');
+
+    await expect(page.getByText('Hospital, Gjakovë, Kosovo')).toBeVisible();
+    await expect(page.getByRole('button', { name: /drop-off point pin/i })).toBeVisible();
+  });
+
+  test('tells the Rider to click the map when a search finds no street name', async ({ page }) => {
+    await page.route('**/rider/places**', (r) => r.fulfill({ json: [] }));
+    await signUpAndOpenPlanner(page);
+
+    await page.getByRole('combobox', { name: /search for the drop-off point/i }).fill('Nowhere road');
+
+    await expect(page.getByText(/no streets or places match.*click the map to drop a pin/i)).toBeVisible();
+  });
+
+  test('says plainly when search is unavailable and still lets the Rider click the map', async ({ page }) => {
+    await page.route('**/rider/places**', (r) => r.fulfill({ status: 503, json: { message: 'Search is unavailable right now. Click the map to place a pin instead.' } }));
+    await signUpAndOpenPlanner(page);
+
+    await page.getByRole('combobox', { name: /search for the pickup point/i }).fill('Bajram');
+
+    await expect(page.getByText(/search is unavailable right now/i)).toBeVisible();
   });
 
   test('shows the Drop-off Point as a pointed location pin', async ({ page }) => {
@@ -447,14 +496,75 @@ test.describe('Rider ride planner', () => {
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
   });
 
+  test('fills the search box of a pin dropped on the map with its street name', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page, 'Skënderbeu, Gjakova');
+    const box = (await page.locator('.map-card').boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue('Skënderbeu, Gjakova');
+  });
+
+  test('shows a finding message, never the coordinates, while the street name is still loading', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/rider/places/reverse**', async (r) => {
+      await gate;
+      await r.fulfill({ json: { street: 'Skënderbeu, Gjakova' } });
+    });
+    const box = (await page.locator('.map-card').boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    const search = page.getByRole('combobox', { name: /search for the pickup point/i });
+    await expect(search).toHaveValue('Finding the street name…');
+    await expect(search).not.toHaveValue(/\d+\.\d{5}/);
+    release();
+    await expect(search).toHaveValue('Skënderbeu, Gjakova');
+  });
+
+  test('fills the search box with the point when the map has no street name there', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page, null);
+    const box = (await page.locator('.map-card').boundingBox())!;
+
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+
+    await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue(/^-?\d+\.\d{5}, -?\d+\.\d{5}$/);
+  });
+
+  test('puts the street name of the pin in the box again when the Rider leaves it half typed', async ({ page }) => {
+    await page.route('**/rider/places?**', (r) => r.fulfill({ json: [] }));
+    await signUpAndOpenPlanner(page, 'Skënderbeu, Gjakova');
+    const box = (await page.locator('.map-card').boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.3);
+    const search = page.getByRole('combobox', { name: /search for the pickup point/i });
+    await expect(search).toHaveValue('Skënderbeu, Gjakova');
+
+    await search.fill('Bajr');
+    await page.getByRole('heading', { name: /plan your ride/i }).click();
+
+    await expect(search).toHaveValue('Skënderbeu, Gjakova');
+  });
+
   test.describe('with location allowed', () => {
     test.use({ geolocation: { latitude: 51.5072, longitude: -0.1276 }, permissions: ['geolocation'] });
 
     test('puts the Pickup Point at the device location by itself, anywhere in the world', async ({ page }) => {
-      await signUpAndOpenPlanner(page);
+      await signUpAndOpenPlanner(page, 'Nëna Terezë, London');
 
       await expect(page.getByText('Your location', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+      await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue('Nëna Terezë, London');
+    });
+
+    test('fills the Pickup Point search with the device point when the map has no street name there', async ({ page }) => {
+      await signUpAndOpenPlanner(page, null);
+
+      await expect(page.getByRole('combobox', { name: /search for the pickup point/i })).toHaveValue('51.50720, -0.12760');
     });
   });
 
