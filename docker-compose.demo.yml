@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: imresamu/postgis:17-3.5-bookworm
+    restart: always
+    environment:
+      POSTGRES_USER: thirrem
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: thirrem
+    volumes:
+      - demo-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thirrem -d thirrem"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "5001"
+      DATABASE_URL: postgres://thirrem:${POSTGRES_PASSWORD}@postgres:5432/thirrem
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
+      TRUST_PROXY: "true"
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-5001}:5001"
+
+volumes:
+  demo-db:
