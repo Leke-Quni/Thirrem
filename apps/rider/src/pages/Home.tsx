@@ -1,44 +1,112 @@
-import { useRef } from 'react';
+import type { Coordinate } from '@thirrem/types';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { Logo } from '../components/Logo';
+import { RouteLoader } from '../components/RouteLoader';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { PlannerPanel } from '../map/PlannerPanel';
+import { RideMap } from '../map/RideMap';
+import { locate } from '../map/locate';
+import { initialPlan, planReducer } from '../map/planner';
+import { useRoute } from '../map/useRoute';
+import { HomeSkeleton } from './HomeSkeleton';
 
 export function Home() {
   const { email, loading, logout } = useAuth();
   const navigate = useNavigate();
   const loggingOut = useRef(false);
+  const [plan, dispatch] = useReducer(planReducer, initialPlan);
+  const [mapState, setMapState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const [locating, setLocating] = useState(false);
+  const [locateMessage, setLocateMessage] = useState<string | null>(null);
+  const [focus, setFocus] = useState<{ point: Coordinate; nonce: number } | null>(null);
+  const { state: route, retry } = useRoute(plan.pickup, plan.dropoff);
 
-  if (loading) return null;
+  const planRef = useRef(plan);
+  planRef.current = plan;
+
+  const findMe = async (auto = false) => {
+    setLocating(true);
+    setLocateMessage(null);
+    try {
+      const point = await locate();
+      if (auto && planRef.current.pickup) return;
+      dispatch({ type: 'choose', slot: 'pickup', point: { ...point, origin: 'device' } });
+      setFocus((current) => ({ point, nonce: (current?.nonce ?? 0) + 1 }));
+    } catch (error) {
+      setLocateMessage(error instanceof Error ? error.message : 'Your location could not be found. Click the map to place a pin instead.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const askedForLocation = useRef(false);
+  useEffect(() => {
+    if (mapState !== 'ready' || askedForLocation.current) return;
+    askedForLocation.current = true;
+    void findMe(true);
+  }, [mapState]);
+
+  if (loading) return <HomeSkeleton />;
   if (!email) return loggingOut.current ? null : <Navigate to="/login" replace />;
 
   return (
-    <div className="page">
-      <div className="wrap">
-        <nav>
-          <Logo to="/home" />
-          <div className="links">
-            <ThemeToggle />
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => {
-                loggingOut.current = true;
-                logout();
-                navigate('/');
-              }}
-            >
-              Log out
-            </button>
-          </div>
-        </nav>
-        <main className="auth-card">
-          <h1>You are logged in</h1>
-          <p>
-            Signed in as <strong>{email}</strong>. The map and ride requests arrive in the next tickets.
-          </p>
-        </main>
-      </div>
+    <div className="ride-page">
+      <header className="ride-bar">
+        <Logo to="/home" />
+        <div className="links">
+          <span className="who">{email}</span>
+          <ThemeToggle />
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => {
+              loggingOut.current = true;
+              logout();
+              navigate('/');
+            }}
+          >
+            Log out
+          </button>
+        </div>
+      </header>
+      <main className="ride-layout">
+        <PlannerPanel
+          plan={plan}
+          route={route}
+          mapReady={mapState === 'ready'}
+          locating={locating}
+          locateMessage={locateMessage}
+          onLocate={() => findMe()}
+          onSelect={(slot) => dispatch({ type: 'select', slot })}
+          onRemove={(slot) => dispatch({ type: 'remove', slot })}
+          onRetry={retry}
+        />
+        <div className="map-card">
+          <RideMap
+            pickup={plan.pickup}
+            dropoff={plan.dropoff}
+            geometry={route.status === 'ready' ? route.route.geometry : null}
+            focus={focus}
+            onPlace={(point) => dispatch({ type: 'place', point })}
+            onMove={(slot, point) => dispatch({ type: 'move', slot, point })}
+            onReady={() => setMapState('ready')}
+            onFailure={() => setMapState('failed')}
+          />
+          <div className="map-crosshair" aria-hidden="true" />
+          {mapState === 'loading' && (
+            <div className="map-loading" role="status">
+              <RouteLoader label="Loading the map…" />
+            </div>
+          )}
+          {mapState === 'failed' && (
+            <div className="map-loading is-error" role="alert">
+              The map could not be loaded. Check your connection and reload the page.
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
