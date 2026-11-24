@@ -14,13 +14,17 @@ import { CachingRoutingService } from './routing/caching-routing.service.js';
 import { OsrmRoutingService } from './routing/osrm-routing.service.js';
 import { RiderRouteController } from './routing/rider-route.controller.js';
 import { RoutingService } from './routing/routing.service.js';
-import { AuthRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard } from './security/rate-limiter.js';
+import { CachingPlaceSearchService } from './places/caching-place-search.service.js';
+import { PhotonPlaceSearchService } from './places/photon-place-search.service.js';
+import { PlaceSearchService } from './places/place-search.service.js';
+import { RiderPlacesController } from './places/rider-places.controller.js';
+import { AuthRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderPlacesController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -36,6 +40,13 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
       inject: [APP_CONFIG],
     },
     RouteRateLimitGuard,
+    SearchRateLimitGuard,
+    { provide: SEARCH_RATE_LIMIT, useFactory: (config: AppConfig) => config.searchRateLimit, inject: [APP_CONFIG] },
+    {
+      provide: PlaceSearchService,
+      useFactory: (config: AppConfig) => new CachingPlaceSearchService(new PhotonPlaceSearchService(config.photonUrl)),
+      inject: [APP_CONFIG],
+    },
     { provide: ROUTE_RATE_LIMIT, useFactory: (config: AppConfig) => config.routeRateLimit, inject: [APP_CONFIG] },
     { provide: ROAD_GRAPH, useValue: emptyRoadGraph },
   ],

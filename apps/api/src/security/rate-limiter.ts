@@ -8,6 +8,7 @@ export interface RateLimitOptions {
 
 export const RATE_LIMIT = Symbol('RATE_LIMIT');
 export const ROUTE_RATE_LIMIT = Symbol('ROUTE_RATE_LIMIT');
+export const SEARCH_RATE_LIMIT = Symbol('SEARCH_RATE_LIMIT');
 
 interface Window {
   startedAt: number;
@@ -59,6 +60,15 @@ export class RouteRateLimitGuard extends RateLimitGuard {
   protected readonly message = 'Too many route requests. Please wait a minute and try again.';
 
   constructor(clock: SimulationClock, @Inject(ROUTE_RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
+  }
+}
+
+@Injectable()
+export class SearchRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many searches. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(SEARCH_RATE_LIMIT) options: RateLimitOptions) {
     super(clock, options);
   }
 }

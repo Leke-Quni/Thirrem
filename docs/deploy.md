@@ -23,6 +23,7 @@ Migrations live in `apps/api/migrations` and run with `yarn workspace @thirrem/a
 The map and routes use free public services, with no key and no card:
 
 - Map tiles and label fonts come from [OpenFreeMap](https://openfreemap.org), fetched by the browser. The map attribution stays visible.
+- Street and place search comes from the public [Photon](https://photon.komoot.io) geocoder, called by the API only, with the same caching, per-client limit (`SEARCH_RATE_LIMIT`) and User-Agent. When it is down the planner says so and the Rider can still click the map.
 - Routes come from the public OSRM server, called by the API only. The API caches routes, limits each client (`ROUTE_RATE_LIMIT`) and sends a `thirrem-demo` User-Agent, as the public server asks. It is best-effort, so when it is down the planner shows a plain "Routing is unavailable" message.
 
 Both can change or disappear. To swap the router, point `OSRM_URL` at any OSRM-compatible server.
@@ -49,6 +50,8 @@ Both can change or disappear. To swap the router, point `OSRM_URL` at any OSRM-c
 | `CORS_ORIGINS` | API | Comma-separated; `*` matches one subdomain label. localhost is added outside production. |
 | `AUTH_RATE_LIMIT` | API | Signup and login attempts per client per minute. Default 10. |
 | `OSRM_URL` | API | OSRM-compatible routing server. Default `https://router.project-osrm.org`. |
+| `PHOTON_URL` | API | Photon-compatible geocoder. Default `https://photon.komoot.io`. |
+| `SEARCH_RATE_LIMIT` | API | Place searches per client per minute. Default 60. |
 | `ROUTE_RATE_LIMIT` | API | Route requests per client per minute. Default 30. |
 | `TRUST_PROXY` | API | `true` behind Funnel so rate limiting sees the real client IP. |
 | `POSTGRES_PASSWORD` | Compose | Required, no default. |

@@ -28,3 +28,14 @@ export interface Coordinate {
   lat: number;
   lon: number;
 }
+
+export interface PlaceResult {
+  name: string;
+  detail: string;
+  lat: number;
+  lon: number;
+}
+
+export interface StreetResponse {
+  street: string | null;
+}
