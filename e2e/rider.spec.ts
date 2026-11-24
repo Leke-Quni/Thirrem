@@ -20,6 +20,21 @@ test.describe('Rider landing page', () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test('shows the live demo as online when the API health check passes', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('status').filter({ hasText: /live demo is online/i })).toBeVisible();
+  });
+
+  test('shows the live demo as offline but keeps the page working when the API is unreachable', async ({ page }) => {
+    await page.route('**/health', (route) => route.abort());
+    await page.goto('/');
+
+    await expect(page.getByRole('status').filter({ hasText: /live demo is offline/i })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sign up', exact: true })).toBeVisible();
+  });
+
   test('is dark by default and can switch to light mode, remembering the choice', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
