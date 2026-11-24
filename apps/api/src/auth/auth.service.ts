@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AccountRepository, DuplicateEmailError, type Account, type AppName } from './account.repository.js';
+import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { PasswordHasher } from './password-hasher.js';
 import { passwordRequirementMessage, unmetPasswordRules } from './password-policy.js';
 
@@ -11,6 +12,8 @@ export interface Session {
   token: string;
 }
 
+export const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
 const normaliseEmail = (email: string) => email.trim().toLowerCase();
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -19,6 +22,7 @@ export class AuthService {
   constructor(
     private readonly accounts: AccountRepository,
     private readonly hasher: PasswordHasher,
+    private readonly clock: SimulationClock,
   ) {}
 
   async signup(app: AppName, email: unknown, password: unknown): Promise<Session> {
@@ -46,14 +50,18 @@ export class AuthService {
   }
 
   async authenticate(app: AppName, token: string | undefined): Promise<Account> {
-    const account = token ? await this.accounts.findBySessionTokenHash(app, hashToken(token)) : null;
+    const account = token ? await this.accounts.findBySessionTokenHash(app, hashToken(token), this.clock.now()) : null;
     if (!account) throw new UnauthorizedException('Log in to continue');
     return account;
   }
 
   private async openSession(account: Account): Promise<Session> {
     const token = randomBytes(32).toString('hex');
-    await this.accounts.saveSession(hashToken(token), account.id);
+    await this.accounts.saveSession(
+      hashToken(token),
+      account.id,
+      new Date(this.clock.now().getTime() + SESSION_LIFETIME_MS),
+    );
     return { email: account.email, token };
   }
 }

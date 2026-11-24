@@ -1,4 +1,4 @@
-import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { AccountRepository, DuplicateEmailError, type Account, type AppName } from './account.repository.js';
 
@@ -10,7 +10,6 @@ interface AccountRow {
 }
 
 const UNIQUE_VIOLATION = '23505';
-const SCHEMA_LOCK_ID = 7001;
 
 const toAccount = (row: AccountRow): Account => ({
   id: row.id,
@@ -20,27 +19,9 @@ const toAccount = (row: AccountRow): Account => ({
 });
 
 @Injectable()
-export class PgAccountRepository extends AccountRepository implements OnModuleInit {
+export class PgAccountRepository extends AccountRepository {
   constructor(private readonly database: DatabaseService) {
     super();
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.database.query(`
-      SELECT pg_advisory_xact_lock(${SCHEMA_LOCK_ID});
-      CREATE TABLE IF NOT EXISTS accounts (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        app text NOT NULL,
-        email text NOT NULL,
-        password_hash text NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        UNIQUE (app, email)
-      );
-      CREATE TABLE IF NOT EXISTS sessions (
-        token_hash text PRIMARY KEY,
-        account_id uuid NOT NULL REFERENCES accounts(id),
-        created_at timestamptz NOT NULL DEFAULT now()
-      )`);
   }
 
   async create(app: AppName, email: string, passwordHash: string): Promise<Account> {
@@ -64,15 +45,19 @@ export class PgAccountRepository extends AccountRepository implements OnModuleIn
     return rows[0] ? toAccount(rows[0]) : null;
   }
 
-  async saveSession(tokenHash: string, accountId: string): Promise<void> {
-    await this.database.query('INSERT INTO sessions (token_hash, account_id) VALUES ($1, $2)', [tokenHash, accountId]);
+  async saveSession(tokenHash: string, accountId: string, expiresAt: Date): Promise<void> {
+    await this.database.query('INSERT INTO sessions (token_hash, account_id, expires_at) VALUES ($1, $2, $3)', [
+      tokenHash,
+      accountId,
+      expiresAt,
+    ]);
   }
 
-  async findBySessionTokenHash(app: AppName, tokenHash: string): Promise<Account | null> {
+  async findBySessionTokenHash(app: AppName, tokenHash: string, now: Date): Promise<Account | null> {
     const { rows } = await this.database.query<AccountRow>(
       `SELECT a.* FROM sessions s JOIN accounts a ON a.id = s.account_id
-       WHERE s.token_hash = $1 AND a.app = $2`,
-      [tokenHash, app],
+       WHERE s.token_hash = $1 AND a.app = $2 AND s.expires_at > $3`,
+      [tokenHash, app, now],
     );
     return rows[0] ? toAccount(rows[0]) : null;
   }

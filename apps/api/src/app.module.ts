@@ -4,10 +4,13 @@ import { AuthService } from './auth/auth.service.js';
 import { PasswordHasher, ScryptPasswordHasher } from './auth/password-hasher.js';
 import { PgAccountRepository } from './auth/pg-account.repository.js';
 import { RiderAuthController } from './auth/rider-auth.controller.js';
+import type { AppConfig } from './config/app-config.js';
+import { APP_CONFIG, appConfigProvider } from './config/app-config.provider.js';
 import { DatabaseService } from './database/database.service.js';
 import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
+import { AuthRateLimitGuard, RATE_LIMIT } from './security/rate-limiter.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
@@ -15,6 +18,9 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 @Module({
   controllers: [HealthController, RoadGraphController, RiderAuthController],
   providers: [
+    appConfigProvider,
+    AuthRateLimitGuard,
+    { provide: RATE_LIMIT, useFactory: (config: AppConfig) => config.authRateLimit, inject: [APP_CONFIG] },
     DatabaseService,
     AuthService,
     { provide: AccountRepository, useClass: PgAccountRepository },
