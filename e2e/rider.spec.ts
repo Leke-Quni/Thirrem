@@ -473,3 +473,17 @@ test.describe('Rider ride planner', () => {
     });
   });
 });
+
+test.describe('Rider first paint on a slow connection', () => {
+  test('does not download the map code on pages that have no map', async ({ page }) => {
+    const requested: string[] = [];
+    page.on('request', (request) => requested.push(request.url()));
+
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.goto('/login');
+    await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+
+    expect(requested.filter((url) => /maplibre/i.test(url))).toEqual([]);
+  });
+});
