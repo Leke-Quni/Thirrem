@@ -732,3 +732,92 @@ test.describe('Rider session check on the home page', () => {
     expect(await storedToken(page)).toBeNull();
   });
 });
+
+test.describe('Rider loading shell has the same layout as the loaded page', () => {
+  type Box = { x: number; y: number; width: number; height: number };
+  const sizes = [
+    ['desktop', { width: 1280, height: 800 }],
+    ['phone', { width: 390, height: 844 }],
+  ] as const;
+
+  async function signedIn(page: import('@playwright/test').Page) {
+    const response = await page.request.post('/rider/auth/signup', { data: { email: `shell-${randomUUID()}@example.com`, password } });
+    const { token } = await response.json();
+    await page.addInitScript((value) => {
+      if (sessionStorage.getItem('rider-session-seeded')) return;
+      sessionStorage.setItem('rider-session-seeded', 'yes');
+      localStorage.setItem('thirrem-rider-token', value);
+    }, token);
+  }
+  const box = async (page: import('@playwright/test').Page, selector: string): Promise<Box> => {
+    const found = await page.locator(selector).first().boundingBox();
+    if (!found) throw new Error(`${selector} is not on the page`);
+    return found;
+  };
+  const sameBox = (shell: Box, loaded: Box, label: string) => {
+    const round = (b: Box) => ({ x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) });
+    expect({ label, ...round(shell) }).toEqual({ label, ...round(loaded) });
+  };
+  const layout = async (page: import('@playwright/test').Page, selectors: Record<string, string>) => {
+    const result: Record<string, Box> = {};
+    for (const [name, selector] of Object.entries(selectors)) {
+      if (name === 'email' && !(await page.locator(selector).first().isVisible())) continue;
+      result[name] = await box(page, selector);
+    }
+    return result;
+  };
+  const sameEmailSlot = (shell: Box | undefined, loaded: Box | undefined) => {
+    expect(Boolean(shell)).toBe(Boolean(loaded));
+    if (!shell || !loaded) return;
+    expect(Math.round(shell.x + shell.width)).toBe(Math.round(loaded.x + loaded.width));
+    expect(Math.round(shell.y)).toBe(Math.round(loaded.y));
+    expect(Math.round(shell.height)).toBe(Math.round(loaded.height));
+  };
+  const loadedSelectors = { header: '.ride-bar', toggle: '.ride-bar .icon-btn', logout: '.ride-bar .btn', planner: '.planner', map: '.map-card', email: '.ride-bar .who' };
+  const loadedPage = async (page: import('@playwright/test').Page) => {
+    await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
+    return layout(page, loadedSelectors);
+  };
+
+  for (const [name, viewport] of sizes) {
+    test(`the static shell shown before the app code arrives matches the loaded page on a ${name}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await signedIn(page);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/src/main.tsx*', async (r) => {
+        await gate;
+        await r.continue();
+      });
+      await page.goto('/home', { waitUntil: 'commit' });
+      await expect(page.locator('.boot-planner')).toBeVisible();
+      const shell = await layout(page, { header: '.boot-bar', toggle: '.boot-toggle', logout: '.boot-logout', planner: '.boot-planner', map: '.boot-map', email: '.boot-who' });
+
+      release();
+      const loaded = await loadedPage(page);
+
+      for (const part of ['header', 'toggle', 'logout', 'planner', 'map'] as const) sameBox(shell[part], loaded[part], part);
+      sameEmailSlot(shell.email, loaded.email);
+    });
+
+    test(`the skeleton shown while the login is checked matches the loaded page on a ${name}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await signedIn(page);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/rider/me', async (r) => {
+        await gate;
+        await r.continue();
+      });
+      await page.goto('/home');
+      await expect(page.locator('.planner-skeleton')).toBeVisible();
+      const shell = await layout(page, { header: '.ride-bar', toggle: '.ride-bar .icon-btn', logout: '.logout-skeleton', planner: '.planner-skeleton', map: '.map-card', email: '.who-skeleton' });
+
+      release();
+      const loaded = await loadedPage(page);
+
+      for (const part of ['header', 'toggle', 'logout', 'planner', 'map'] as const) sameBox(shell[part], loaded[part], part);
+      sameEmailSlot(shell.email, loaded.email);
+    });
+  }
+});

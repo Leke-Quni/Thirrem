@@ -8,7 +8,9 @@ export function HomeSkeleton() {
       <header className="ride-bar">
         <Logo to="/home" />
         <div className="links">
+          <span className="who-skeleton" aria-hidden="true" />
           <ThemeToggle />
+          <span className="logout-skeleton" aria-hidden="true" />
         </div>
       </header>
       <span className="sr-only" role="status">
