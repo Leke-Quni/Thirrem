@@ -262,4 +262,57 @@ describe("The life of a Rider's Sandbox", () => {
     const again = await request(app.getHttpServer()).post('/rider/auth/login').send({ email, password }).expect(200);
     expect(await drivers(again.body.token)).toHaveLength(40);
   });
+
+  describe('starting a new one', () => {
+    const startNew = async (app: INestApplication, token: string, fresh: unknown = true): Promise<SimulatedDriver[]> => {
+      const res = await request(app.getHttpServer()).put('/rider/sandbox').set('Authorization', `Bearer ${token}`).send({ centre, fresh }).expect(200);
+      return res.body.drivers;
+    };
+
+    it('replaces a stopped Sandbox with new, running Drivers on the saved paths', async () => {
+      const { app, clock, roads, rider, drivers, watch, allPathsReady } = await start(new InstantPacer());
+      const token = await rider();
+      await allPathsReady(token);
+      const old = await drivers(token);
+      clock.advance(15 * MINUTE);
+      const asked = () => [roads.requests.length, roads.headingRequests.length, roads.routeRequests.length];
+      const before = asked();
+
+      const next = await startNew(app, token);
+
+      expect(next).toHaveLength(40);
+      expect(ids(next).filter((id) => ids(old).includes(id))).toEqual([]);
+      expect(ids((await watch(token).first) as SimulatedDriver[])).toEqual(ids(next));
+      expect(asked()).toEqual(before);
+    });
+
+    it('keeps the new Sandbox for later visits', async () => {
+      const { app, rider, drivers } = await start(new InstantPacer());
+      const token = await rider();
+      await drivers(token);
+
+      const next = await startNew(app, token);
+
+      expect(ids(await drivers(token))).toEqual(ids(next));
+    });
+
+    it('leaves the Sandbox of every other Rider alone', async () => {
+      const { app, rider, drivers } = await start(new InstantPacer());
+      const [token, other] = [await rider(), await rider()];
+      await drivers(token);
+      const theirs = await drivers(other);
+
+      await startNew(app, token);
+
+      expect(ids(await drivers(other))).toEqual(ids(theirs));
+    });
+
+    it('happens only when clearly asked for', async () => {
+      const { app, rider, drivers } = await start(new InstantPacer());
+      const token = await rider();
+      const first = await drivers(token);
+
+      for (const unclear of [false, 'true', 1, null]) expect(ids(await startNew(app, token, unclear))).toEqual(ids(first));
+    });
+  });
 });

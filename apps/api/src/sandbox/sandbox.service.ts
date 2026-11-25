@@ -24,10 +24,10 @@ export class SandboxService extends RiderActivity {
 
   /**
    * The Drivers of the account's Sandbox around `centre`, where they are now.
-   * Changes to one account's Sandbox take turns, so they never place two sets of Drivers.
+   * A `fresh` one replaces any the account has. Changes to one account's Sandbox take turns, so they never place two sets of Drivers.
    */
-  async open(accountId: string, centre: Coordinate): Promise<SimulatedDriver[]> {
-    const sandbox = await this.inTurn(accountId, () => this.reuseOrPlace(accountId, centre));
+  async open(accountId: string, centre: Coordinate, fresh = false): Promise<SimulatedDriver[]> {
+    const sandbox = await this.inTurn(accountId, () => this.reuseOrPlace(accountId, centre, fresh));
     return this.driversOf(sandbox, this.clock.now().getTime());
   }
 
@@ -70,8 +70,8 @@ export class SandboxService extends RiderActivity {
     return next;
   }
 
-  private async reuseOrPlace(accountId: string, centre: Coordinate): Promise<Sandbox> {
-    const existing = await this.sandboxes.findByAccount(accountId);
+  private async reuseOrPlace(accountId: string, centre: Coordinate, fresh: boolean): Promise<Sandbox> {
+    const existing = fresh ? null : await this.sandboxes.findByAccount(accountId);
     const reused =
       existing && distanceM(existing.centre, centre) <= SAME_PLACE_M && sandboxStatus(existing.lastActiveMs, this.clock.now().getTime()) !== 'discarded';
     const area = reused ? existing.area : await this.areas.areaAt(centre);
