@@ -10,6 +10,7 @@ import { SimulationClock } from '../../src/simulation-clock/simulation-clock.js'
 import { ROAD_GRAPH, type RoadGraph } from '../../src/road-graph/road-graph.js';
 import { PlaceSearchService } from '../../src/places/place-search.service.js';
 import { RoutingService } from '../../src/routing/routing.service.js';
+import { RoadService } from '../../src/sandbox/road-service.js';
 
 export class ManualClock extends SimulationClock {
   constructor(private current: Date) {
@@ -23,7 +24,7 @@ export class ManualClock extends SimulationClock {
   }
 }
 
-export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; routing?: RoutingService; places?: PlaceSearchService; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions; routeRateLimit?: RateLimitOptions; searchRateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
+export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; routing?: RoutingService; places?: PlaceSearchService; roads?: RoadService; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions; routeRateLimit?: RateLimitOptions; searchRateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
   const config = { ...loadConfig(), ...options.config };
   let builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_CONFIG)
@@ -38,6 +39,7 @@ export async function createTestApp(options: { clock?: ManualClock; roadGraph?: 
   if (options.roadGraph) builder = builder.overrideProvider(ROAD_GRAPH).useValue(options.roadGraph);
   if (options.routing) builder = builder.overrideProvider(RoutingService).useValue(options.routing);
   if (options.places) builder = builder.overrideProvider(PlaceSearchService).useValue(options.places);
+  if (options.roads) builder = builder.overrideProvider(RoadService).useValue(options.roads);
   const app = (await builder.compile()).createNestApplication<NestExpressApplication>();
   configureApp(app, config);
   await app.init();
