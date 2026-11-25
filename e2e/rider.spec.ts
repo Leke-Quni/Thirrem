@@ -123,9 +123,27 @@ test.describe('Rider accounts', () => {
     await expect(page.getByRole('alert')).toContainText(/already exists/i);
   });
 
-  test('has no guest mode: the home page sends a visitor without an account to login', async ({ page }) => {
+  test('has no guest mode: the home page sends a visitor without an account to the landing page', async ({ page }) => {
     await page.goto('/home');
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
+  });
+
+  test('sends a logged-out visitor from /home to the landing page before any app code, never showing the planner loader', async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/src/main.tsx*', async (r) => {
+      await gate;
+      await r.continue();
+    });
+
+    await page.goto('/home', { waitUntil: 'commit' });
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator('#boot-home')).toBeAttached();
+    await expect(page.getByText('Loading your ride planner…')).toHaveCount(0);
+    release();
+    await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
   });
 
   test.describe('a logged-in rider', () => {
@@ -154,6 +172,17 @@ test.describe('Rider accounts', () => {
       await page.goto('/');
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    });
+
+    test('lands on the landing page when going back to /home after logging out', async ({ page }) => {
+      await page.goto('/home');
+      await page.getByRole('button', { name: 'Log out' }).click();
+      await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
+
+      await page.goBack();
+
+      await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
+      await expect(page).toHaveURL(/\/$/);
     });
 
     test('is not bounced back to the home page after logging out', async ({ page }) => {
@@ -708,6 +737,8 @@ test.describe('Rider ride planner', () => {
 });
 
 test.describe('Rider first paint on a slow connection', () => {
+  const withSession = (page: import('@playwright/test').Page) => page.addInitScript(() => localStorage.setItem('thirrem-rider-token', 'a-stored-session'));
+
   const holdAppCode = async (page: import('@playwright/test').Page) => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -719,6 +750,7 @@ test.describe('Rider first paint on a slow connection', () => {
   };
 
   test('shows the page shell on the dark background before any app code has arrived on /home, never a white screen', async ({ page }) => {
+    await withSession(page);
     const release = await holdAppCode(page);
 
     await page.goto('/home', { waitUntil: 'commit' });
@@ -734,6 +766,7 @@ test.describe('Rider first paint on a slow connection', () => {
   });
 
   test('keeps the early loader inside the map card instead of covering the whole page', async ({ page }) => {
+    await withSession(page);
     await holdAppCode(page);
 
     await page.goto('/home', { waitUntil: 'commit' });
@@ -760,6 +793,7 @@ test.describe('Rider first paint on a slow connection', () => {
   });
 
   test('uses the light page shell on /home when the Rider chose light mode', async ({ page }) => {
+    await withSession(page);
     await page.addInitScript(() => localStorage.setItem('thirrem-theme', 'light'));
     await holdAppCode(page);
 

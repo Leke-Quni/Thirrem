@@ -15,7 +15,7 @@ import { HomeSkeleton } from './HomeSkeleton';
 import { SessionUnavailable } from './SessionUnavailable';
 
 export function Home() {
-  const { email, loading, unreachable, retry: retrySession, logout } = useAuth();
+  const { email, loading, unreachable, expired, retry: retrySession, logout } = useAuth();
   const navigate = useNavigate();
   const loggingOut = useRef(false);
   const [plan, dispatch] = useReducer(planReducer, initialPlan);
@@ -60,7 +60,7 @@ export function Home() {
 
   if (loading) return <HomeSkeleton />;
   if (unreachable) return <SessionUnavailable onRetry={retrySession} />;
-  if (!email) return loggingOut.current ? null : <Navigate to="/login" replace />;
+  if (!email) return loggingOut.current ? null : <Navigate to={expired ? '/login' : '/'} replace />;
 
   return (
     <div className="ride-page">

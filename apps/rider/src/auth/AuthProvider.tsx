@@ -8,6 +8,8 @@ interface AuthState {
   email: string | null;
   loading: boolean;
   unreachable: boolean;
+  /** The server rejected the stored session, so the Rider has to log in again. */
+  expired: boolean;
   retry(): void;
   signup(email: string, password: string): Promise<void>;
   login(email: string, password: string): Promise<void>;
@@ -22,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [unreachable, setUnreachable] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [expired, setExpired] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -36,8 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error: unknown) => {
         if (!current) return;
-        if (shouldEndSession(error)) localStorage.removeItem(TOKEN_KEY);
-        else setUnreachable(true);
+        if (shouldEndSession(error)) {
+          localStorage.removeItem(TOKEN_KEY);
+          if (current) setExpired(true);
+        } else setUnreachable(true);
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -52,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const open = useCallback((session: { email: string; token: string }) => {
     localStorage.setItem(TOKEN_KEY, session.token);
     setEmail(session.email);
+    setExpired(false);
   }, []);
 
   const value = useMemo<AuthState>(
@@ -59,15 +65,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       loading,
       unreachable,
+      expired,
       retry,
       signup: async (e, p) => open(await authApi.signup(e, p)),
       login: async (e, p) => open(await authApi.login(e, p)),
       logout: () => {
         localStorage.removeItem(TOKEN_KEY);
         setEmail(null);
+        setExpired(false);
       },
     }),
-    [email, loading, unreachable, retry, open],
+    [email, loading, unreachable, expired, retry, open],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
