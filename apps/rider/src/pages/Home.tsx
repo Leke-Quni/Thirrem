@@ -37,7 +37,10 @@ export function Home() {
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
   const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
-  const rideRequest = sandbox.status === 'ready' ? sandbox.rideRequest : null;
+  // A failed Ride Request the Rider has moved on from is not shown again.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
+  const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
   const askedHere = useRef(false);
   const { pending, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
     askedHere.current = true;
@@ -46,9 +49,11 @@ export function Home() {
   const marks = useMemo(() => carMarks(rideRequest), [rideRequest]);
   const droppedRequest = useRef(false);
 
-  // After a reload the pins are put back where the open Ride Request has them, whatever else moved them.
+  // After a reload the pins and Vehicle Type are put back as the shown Ride Request has them, whatever else moved them.
   useEffect(() => {
-    if (rideRequest) dispatch({ type: 'restore', pickup: rideRequest.pickup, dropoff: rideRequest.dropoff });
+    if (!rideRequest) return;
+    dispatch({ type: 'restore', pickup: rideRequest.pickup, dropoff: rideRequest.dropoff });
+    setVehicleType(rideRequest.vehicleType);
   }, [rideRequest, plan.pickup, plan.dropoff]);
 
   const planRef = useRef(plan);
@@ -111,6 +116,7 @@ export function Home() {
       <main className="ride-layout">
         {rideRequest ? (
           <RideRequestPanel
+            key={rideRequest.id}
             rideRequest={rideRequest}
             pickup={plan.pickup}
             dropoff={plan.dropoff}
@@ -120,6 +126,12 @@ export function Home() {
               askedHere.current = false;
               droppedRequest.current = true;
               startNewSandbox();
+            }}
+            retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
+            onChange={() => {
+              askedHere.current = false;
+              droppedRequest.current = true;
+              setDismissed(rideRequest.id);
             }}
           />
         ) : (
@@ -142,7 +154,7 @@ export function Home() {
               retryFare();
             }}
             focusTitle={droppedRequest.current}
-            request={{ ready: sandbox.status === 'ready' && sandbox.connection === 'live', pending, error: requestError, onRequest: request }}
+            request={{ ready: sandboxLive, pending, error: requestError, onRequest: request }}
           />
         )}
         <div className="map-card">

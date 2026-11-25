@@ -11,16 +11,15 @@ function cellAt({ lat, lon }: Coordinate, level: number): { x: number; y: number
 }
 
 /**
- * Those around `centre` to search: the smallest cell holding `centre` and at least `minimum` of them, along with its neighbours.
- * When even the largest cell holds too few, those in it and next to it.
+ * Those around `centre` to search, area by area from the narrowest to the widest.
+ * Each area is a cell holding `centre`, from the smallest level to the largest, along with its neighbours.
  */
-export function searchArea<T extends Coordinate>(centre: Coordinate, candidates: T[], minimum: number): T[] {
-  for (let level = SMALLEST_LEVEL; ; level -= 1) {
+export function searchAreas<T extends Coordinate>(centre: Coordinate, candidates: T[]): T[][] {
+  const areas: T[][] = [];
+  for (let level = SMALLEST_LEVEL; level >= LARGEST_LEVEL; level -= 1) {
     const middle = cellAt(centre, level);
     const cells = candidates.map((candidate) => ({ candidate, ...cellAt(candidate, level) }));
-    const held = cells.filter(({ x, y }) => x === middle.x && y === middle.y).length;
-    if (held >= minimum || level === LARGEST_LEVEL) {
-      return cells.filter(({ x, y }) => Math.abs(x - middle.x) <= 1 && Math.abs(y - middle.y) <= 1).map(({ candidate }) => candidate);
-    }
+    areas.push(cells.filter(({ x, y }) => Math.abs(x - middle.x) <= 1 && Math.abs(y - middle.y) <= 1).map(({ candidate }) => candidate));
   }
+  return areas;
 }
