@@ -1,16 +1,17 @@
-import type { RideRequest } from '@thirrem/types';
+import type { Ride, RideRequest } from '@thirrem/types';
 import type { Pose } from './driver-fleet';
 
-/** The matched Driver's way to the Pickup Point, drawn in place of the trip's route until they arrive. */
-export interface ApproachRoute {
+/** The matched Driver's way to the Pickup Point, or then the Ride's to the Drop-off Point, drawn in place of the trip's route until they get there. */
+export interface DrivingRoute {
   driverId: string;
   /** The road still ahead, starting where the Driver was last reported. */
   ahead: Array<[number, number]>;
 }
 
-export function approachRoute(rideRequest: RideRequest | null): ApproachRoute | null {
-  const { approach, driver } = rideRequest ?? {};
-  return driver && approach?.status === 'driving' ? { driverId: driver.id, ahead: approach.geometry } : null;
+export function drivingRoute(rideRequest: RideRequest | null, ride: Ride | null): DrivingRoute | null {
+  const progress = ride ? ride.progress : rideRequest?.approach;
+  const driver = ride ? ride.driver : rideRequest?.driver;
+  return driver && progress?.status === 'driving' ? { driverId: driver.id, ahead: progress.geometry } : null;
 }
 
 /** The car glides behind its reported position, so the line is started at the car as drawn and shrinks as it drives. */

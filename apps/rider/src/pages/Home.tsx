@@ -7,12 +7,13 @@ import { RouteLoader } from '../components/RouteLoader';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
-import { approachRoute } from '../map/approach-route';
+import { drivingRoute } from '../map/approach-route';
 import { carMarks } from '../map/car-marks';
 import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
 import { useFareQuote } from '../map/useFareQuote';
 import { useRoute } from '../map/useRoute';
+import { RidePanel } from '../ride-request/RidePanel';
 import { RideRequestPanel } from '../ride-request/RideRequestPanel';
 import { useRequestRide } from '../ride-request/useRequestRide';
 import { sandboxCentre } from '../sandbox/sandbox-centre';
@@ -41,22 +42,25 @@ export function Home() {
   // A failed Ride Request the Rider has moved on from is not shown again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
+  const ride = sandbox.status === 'ready' ? sandbox.ride : null;
+  /** What the Rider is doing, if anything: asking for a Ride, or on one. */
+  const journey = ride ?? rideRequest;
   const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
   const askedHere = useRef(false);
   const { pending, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
     askedHere.current = true;
     requested(made);
   });
-  const marks = useMemo(() => carMarks(rideRequest), [rideRequest]);
-  const approach = useMemo(() => approachRoute(rideRequest), [rideRequest]);
+  const marks = useMemo(() => carMarks(rideRequest, ride), [rideRequest, ride]);
+  const driving = useMemo(() => drivingRoute(rideRequest, ride), [rideRequest, ride]);
   const droppedRequest = useRef(false);
 
-  // After a reload the pins and Vehicle Type are put back as the shown Ride Request has them, whatever else moved them.
+  // After a reload the pins and Vehicle Type are put back as the shown Ride Request or Ride has them, whatever else moved them.
   useEffect(() => {
-    if (!rideRequest) return;
-    dispatch({ type: 'restore', pickup: rideRequest.pickup, dropoff: rideRequest.dropoff });
-    setVehicleType(rideRequest.vehicleType);
-  }, [rideRequest, plan.pickup, plan.dropoff]);
+    if (!journey) return;
+    dispatch({ type: 'restore', pickup: journey.pickup, dropoff: journey.dropoff });
+    setVehicleType(journey.vehicleType);
+  }, [journey, plan.pickup, plan.dropoff]);
 
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -91,6 +95,12 @@ export function Home() {
     void findMe(true);
   }, [mapState]);
 
+  const startNewRide = () => {
+    askedHere.current = false;
+    droppedRequest.current = true;
+    startNewSandbox();
+  };
+
   if (loading) return <HomeSkeleton />;
   if (unreachable) return <SessionUnavailable onRetry={retrySession} />;
   if (!email) return loggingOut.current ? null : <Navigate to={expired ? '/login' : '/'} replace />;
@@ -116,7 +126,9 @@ export function Home() {
         </div>
       </header>
       <main className="ride-layout">
-        {rideRequest ? (
+        {ride ? (
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} />
+        ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}
             rideRequest={rideRequest}
@@ -125,11 +137,7 @@ export function Home() {
             fare={fare}
             focusTitle={askedHere.current}
             onRouting={routing}
-            onStartNew={() => {
-              askedHere.current = false;
-              droppedRequest.current = true;
-              startNewSandbox();
-            }}
+            onStartNew={startNewRide}
             retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
             onChange={() => {
               askedHere.current = false;
@@ -165,16 +173,16 @@ export function Home() {
             pickup={plan.pickup}
             dropoff={plan.dropoff}
             geometry={route.status === 'ready' ? route.route.geometry : null}
-            approach={approach}
+            driving={driving}
             focus={focus}
             drivers={'drivers' in sandbox ? sandbox.drivers : NO_DRIVERS}
             marks={marks}
-            locked={rideRequest !== null}
+            locked={journey !== null}
             onPlace={(point) => {
-              if (!rideRequest) dispatch({ type: 'place', point });
+              if (!journey) dispatch({ type: 'place', point });
             }}
             onMove={(slot, point) => {
-              if (!rideRequest) dispatch({ type: 'move', slot, point });
+              if (!journey) dispatch({ type: 'move', slot, point });
             }}
             onReady={() => setMapState('ready')}
             onFailure={() => setMapState('failed')}

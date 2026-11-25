@@ -1,12 +1,11 @@
-import type { MatchedDriver, RideRequest } from '@thirrem/types';
-import { useEffect, useRef, useState } from 'react';
-import { formatFare } from '../map/format';
-import { pinText } from '../map/pin-text';
+import type { RideRequest } from '@thirrem/types';
+import { useEffect, useRef } from 'react';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
-import { useStreetName } from '../map/useStreetName';
 import { VEHICLE_TYPE_NAMES } from '../map/VehicleTypeList';
 import { ArrivalStatus } from './ArrivalStatus';
+import { NewSandbox } from './NewSandbox';
+import { DriverCard, RideSummary } from './ride-details';
 
 interface RideRequestPanelProps {
   rideRequest: RideRequest;
@@ -23,57 +22,15 @@ interface RideRequestPanelProps {
   focusTitle: boolean;
 }
 
-const rating = new Intl.NumberFormat('en-IE', { minimumFractionDigits: 1 });
-
-function DriverCard({ driver }: { driver: MatchedDriver }) {
-  return (
-    <div className="driver-card">
-      <p className="driver-name" translate="no">
-        {driver.name}
-      </p>
-      <p className="driver-rating">Rated {rating.format(driver.rating)} out of 5</p>
-      <p className="driver-vehicle">
-        {driver.vehicle.colour} <span translate="no">{driver.vehicle.model}</span>
-      </p>
-      <p className="driver-plate">
-        <span className="sr-only">Number plate </span>
-        <span translate="no">{driver.vehicle.plate}</span>
-      </p>
-    </div>
-  );
-}
-
-function Point({ label, point }: { label: string; point: PlanPoint | null }) {
-  const street = useStreetName(point);
-  const text = point?.origin === 'device' ? 'Your location' : pinText(point, street);
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{text || 'Finding the street…'}</dd>
-    </div>
-  );
-}
-
 export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, onRouting, retry, onChange, focusTitle }: RideRequestPanelProps) {
   const { status, driver, approach, offers, vehicleType } = rideRequest;
   const failed = status === 'failed';
   const type = VEHICLE_TYPE_NAMES[vehicleType];
-  const quote = fare.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
-  const [confirming, setConfirming] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
-  const start = useRef<HTMLButtonElement>(null);
-  const keep = useRef<HTMLButtonElement>(null);
-  const asked = useRef(false);
 
   useEffect(() => {
     if (focusTitle) title.current?.focus({ preventScroll: true });
   }, []);
-
-  useEffect(() => {
-    if (confirming) keep.current?.focus();
-    else if (asked.current) start.current?.focus();
-    asked.current = confirming;
-  }, [confirming]);
 
   return (
     <section className="planner ride-request" aria-labelledby="ride-request-title">
@@ -82,7 +39,8 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
       </h1>
       {approach && (
         <ArrivalStatus
-          approach={approach}
+          progress={approach}
+          to="pickup"
           onRouting={() => {
             // The button pressed is about to go, so focus is moved somewhere that stays.
             title.current?.focus({ preventScroll: true });
@@ -111,20 +69,9 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
           </p>
         )}
       </div>
-      {driver && <p className="request-note">A simulated Driver. Getting picked up is not part of the demo yet.</p>}
+      {driver && <p className="request-note">A simulated Driver. Your Ride starts once they have picked you up.</p>}
 
-      <dl className="request-summary">
-        <Point label="Pickup Point" point={pickup} />
-        <Point label="Drop-off Point" point={dropoff} />
-        <div>
-          <dt>Vehicle Type</dt>
-          <dd>{type}</dd>
-        </div>
-        <div>
-          <dt>Fare</dt>
-          <dd>{quote ? formatFare(quote.amountCents) : fare.status === 'error' ? 'Unavailable' : 'Loading…'}</dd>
-        </div>
-      </dl>
+      <RideSummary pickup={pickup} dropoff={dropoff} vehicleType={vehicleType} fare={fare} />
 
       {failed ? (
         <div className="request-reset">
@@ -143,24 +90,8 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
             </div>
           )}
         </div>
-      ) : confirming ? (
-        <div className="request-reset" role="group" aria-labelledby="reset-question">
-          <p id="reset-question">Start a new Sandbox? This drops your Ride Request and places new Drivers.</p>
-          <div className="reset-actions">
-            <button type="button" className="btn primary" onClick={onStartNew}>
-              Start new
-            </button>
-            <button type="button" className="btn ghost" ref={keep} onClick={() => setConfirming(false)}>
-              Keep this one
-            </button>
-          </div>
-        </div>
       ) : (
-        <div className="request-reset">
-          <button type="button" className="btn ghost" ref={start} onClick={() => setConfirming(true)}>
-            Start a new Sandbox
-          </button>
-        </div>
+        <NewSandbox drops="your Ride Request" onStartNew={onStartNew} />
       )}
     </section>
   );

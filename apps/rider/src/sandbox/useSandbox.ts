@@ -1,4 +1,4 @@
-import type { Coordinate, RideRequest, SandboxResponse, SimulatedDriver } from '@thirrem/types';
+import type { Coordinate, Ride, RideRequest, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE_URL } from '../api-base-url';
 import { TOKEN_KEY } from '../auth/AuthProvider';
@@ -8,12 +8,12 @@ import { browserSocket, liveUrl, watchDrivers } from './sandbox-live';
 
 export type SandboxState =
   | { status: 'loading' }
-  | { status: 'ready'; drivers: SimulatedDriver[]; rideRequest: RideRequest | null; connection: 'live' | 'reconnecting' | 'stopped' | 'discarded' | 'resuming' }
+  | { status: 'ready'; drivers: SimulatedDriver[]; rideRequest: RideRequest | null; ride: Ride | null; connection: 'live' | 'reconnecting' | 'stopped' | 'discarded' | 'resuming' }
   // `drivers` are those of a stopped Sandbox that could not be continued yet.
   | { status: 'busy'; drivers: SimulatedDriver[]; retrying: boolean }
   | { status: 'error'; message: string };
 
-const running = ({ drivers, rideRequest }: SandboxResponse): SandboxState => ({ status: 'ready', drivers, rideRequest, connection: 'live' });
+const running = ({ drivers, rideRequest, ride }: SandboxResponse): SandboxState => ({ status: 'ready', drivers, rideRequest, ride, connection: 'live' });
 
 export const hasTimedOut = (state: SandboxState) => state.status === 'ready' && (state.connection === 'stopped' || state.connection === 'discarded');
 
@@ -42,8 +42,8 @@ export function useSandbox(
       if (current.status === 'busy') return { ...current, retrying: true };
       if (!wantsNew.current && current.status === 'ready') {
         if (current.connection === 'stopped') return { ...current, connection: 'resuming' };
-        // An open Ride Request keeps the Sandbox wherever its centre moves, so it stays on screen.
-        if (current.rideRequest && current.rideRequest.status !== 'failed') return current;
+        // An open Ride Request or a Ride keeps the Sandbox wherever its centre moves, so it stays on screen.
+        if (current.ride || (current.rideRequest && current.rideRequest.status !== 'failed')) return current;
       }
       return { status: 'loading' };
     });
@@ -89,9 +89,15 @@ export function useSandbox(
   /** Shows a Ride Request just made, without waiting for the live feed to report it. */
   const requested = useCallback((rideRequest: RideRequest) => setState((current) => (current.status === 'ready' ? { ...current, rideRequest } : current)), []);
 
-  /** Shows that the matched Driver's route is being looked for again, ahead of the live feed. */
+  /** Shows that the route of the Ride, or of the Driver on the way to pickup, is being looked for again, ahead of the live feed. */
   const routing = useCallback(
-    () => setState((current) => (current.status === 'ready' && current.rideRequest ? { ...current, rideRequest: { ...current.rideRequest, approach: { status: 'routing' } } } : current)),
+    () =>
+      setState((current) => {
+        if (current.status !== 'ready') return current;
+        const { ride, rideRequest } = current;
+        if (ride) return { ...current, ride: { ...ride, progress: { status: 'routing' } } };
+        return rideRequest ? { ...current, rideRequest: { ...rideRequest, approach: { status: 'routing' } } } : current;
+      }),
     [],
   );
 

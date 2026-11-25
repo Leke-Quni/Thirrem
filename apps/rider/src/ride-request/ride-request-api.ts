@@ -14,9 +14,13 @@ export async function requestRide(pickup: Coordinate, dropoff: Coordinate, vehic
   return body as RideRequest;
 }
 
-/** Looks for the matched Driver's route again, after none could be found. */
-export async function findRouteAgain(): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/rider/ride-requests/approach`, {
+export type DriveTo = 'pickup' | 'dropoff';
+
+const ROUTE_PATHS: Record<DriveTo, string> = { pickup: '/rider/ride-requests/approach', dropoff: '/rider/rides/route' };
+
+/** Looks for the route to the Pickup Point or the Drop-off Point again, after none could be found. */
+export async function findRouteAgain(to: DriveTo): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${ROUTE_PATHS[to]}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
   });

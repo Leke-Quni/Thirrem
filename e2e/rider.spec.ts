@@ -1602,6 +1602,45 @@ test.describe('Rider Ride Request', () => {
     await expect(again).toBeEnabled();
   });
 
+  const rideOf = (progress: object) => ({ id: 'request-1', vehicleType: 'economy', ...defaultEnds, driver, progress });
+
+  test('follows the Ride from pickup to the Drop-off Point', async ({ page }) => {
+    const { connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+    const ride = (progress: object) => connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: rideOf(progress) } }));
+
+    ride(driving(180));
+
+    const panel = page.getByRole('region', { name: 'On your Ride' });
+    await expect(page.locator('.arrival')).toHaveText(/Drop-off in\s*3 min/);
+    for (const text of ['Arta K.', 'TH-412-KD', '€2.02']) await expect(panel).toContainText(text);
+    await expect(marked(page, 'matched')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).toHaveAccessibleName(/stays put/);
+
+    ride({ status: 'arrived' });
+
+    await expect(page.locator('.arrival')).toHaveText('You have arrived at your Drop-off Point.');
+    await expect(marked(page, 'arrived')).toHaveCount(1);
+  });
+
+  test('lets the Rider ask again when no route to the Drop-off Point can be found', async ({ page }) => {
+    await openPlanner(page);
+    let asked = 0;
+    await page.route('**/rider/rides/route', (r) => {
+      asked += 1;
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: null, ride: rideOf({ status: 'unavailable' }) } }));
+    await page.reload();
+    await expect(page.getByRole('status').filter({ hasText: 'no route to your Drop-off Point' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Find the route again' }).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your route…' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeFocused();
+    expect(asked).toBe(1);
+  });
+
   test('keeps the pins where they are while the Ride Request is open', async ({ page }) => {
     await openPlanner(page);
     await placeBothPins(page);
