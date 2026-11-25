@@ -1,4 +1,4 @@
-import type { SandboxLiveCloseCode, SandboxLiveMessage, SimulatedDriver } from '@thirrem/types';
+import type { SandboxLiveCloseCode, SandboxLiveMessage, SandboxResponse } from '@thirrem/types';
 
 const FIRST_WAIT_MS = 1_000;
 const LONGEST_WAIT_MS = 10_000;
@@ -19,7 +19,7 @@ export interface LiveSocket {
 interface Watch {
   token: string;
   connect(): LiveSocket;
-  onDrivers(drivers: SimulatedDriver[]): void;
+  onSandbox(sandbox: SandboxResponse): void;
   /** The connection dropped and is being restored. */
   onLost(): void;
   /** The feed cannot go on: the server has no Sandbox for this session, or does not accept the session. */
@@ -40,7 +40,7 @@ export function liveUrl(apiBaseUrl: string, pageUrl: string): string {
 }
 
 /** Follows the Sandbox's Drivers, reconnecting as needed, until the returned function is called. */
-export function watchDrivers({ token, connect, onDrivers, onLost, onGone, onStopped, onDiscarded }: Watch): () => void {
+export function watchDrivers({ token, connect, onSandbox, onLost, onGone, onStopped, onDiscarded }: Watch): () => void {
   let socket: LiveSocket;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wait = FIRST_WAIT_MS;
@@ -54,7 +54,7 @@ export function watchDrivers({ token, connect, onDrivers, onLost, onGone, onStop
       if (stopped) return;
       wait = FIRST_WAIT_MS;
       timedOut = false;
-      onDrivers((JSON.parse(data) as SandboxLiveMessage).data.drivers);
+      onSandbox((JSON.parse(data) as SandboxLiveMessage).data);
     };
     socket.onclose = ({ code }) => {
       if (stopped) return;

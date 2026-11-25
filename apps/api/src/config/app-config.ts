@@ -16,6 +16,12 @@ export interface AppConfig {
   sandboxSweepMs: number;
   /** The most Sandboxes that run at once. */
   sandboxLimit: number;
+  dispatch: {
+    /** The fewest Available Drivers a quadtree cell must hold for a Ride Request to be broadcast around it. */
+    minDrivers: number;
+    /** How long after the broadcast a simulated Driver accepts. */
+    acceptAfterMs: { min: number; max: number };
+  };
 }
 
 const DEV_DATABASE_URL = 'postgres://thirrem:thirrem@localhost:5433/thirrem';
@@ -46,5 +52,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
     sandboxLimit: 30,
+    dispatch: { minDrivers: Number(env.DISPATCH_MIN_DRIVERS ?? 5), acceptAfterMs: { min: 2_000, max: 8_000 } },
   };
 }
