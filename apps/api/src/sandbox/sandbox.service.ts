@@ -5,19 +5,22 @@ import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
 import { AreaService } from './area.service.js';
 import { distanceM } from './driver-placement.js';
+import { RiderActivity } from './rider-activity.js';
 import { driverAt, resumedDriver, sandboxDriver } from './sandbox-driver.js';
 import { sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
 import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
 
 @Injectable()
-export class SandboxService {
+export class SandboxService extends RiderActivity {
   private readonly queues = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly sandboxes: SandboxRepository,
     private readonly areas: AreaService,
     private readonly clock: SimulationClock,
-  ) {}
+  ) {
+    super();
+  }
 
   /**
    * The Drivers of the account's Sandbox around `centre`, where they are now.
@@ -26,6 +29,16 @@ export class SandboxService {
   async open(accountId: string, centre: Coordinate): Promise<SimulatedDriver[]> {
     const sandbox = await this.inTurn(accountId, () => this.reuseOrPlace(accountId, centre));
     return this.driversOf(sandbox, this.clock.now().getTime());
+  }
+
+  record(accountId: string): Promise<void> {
+    // A change already under way records activity itself, and a route request must not wait for Drivers to be placed.
+    if (this.queues.has(accountId)) return Promise.resolve();
+    return this.inTurn(accountId, async () => {
+      const sandbox = await this.sandboxes.findByAccount(accountId);
+      const now = this.clock.now().getTime();
+      if (sandbox && sandboxStatus(sandbox.lastActiveMs, now) === 'running') await this.sandboxes.save(accountId, this.active(sandbox, now));
+    });
   }
 
   /** The Drivers of the account's running Sandbox where they are now, or why there are none to show. */

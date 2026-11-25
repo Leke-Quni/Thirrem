@@ -6,7 +6,9 @@ import type { Coordinate, SimulatedDriver } from '@thirrem/types';
 import { afterEach, describe, expect, it } from 'vitest';
 import { distanceM } from '../src/sandbox/driver-placement.js';
 import { createTestApp, ManualClock } from './support/app.js';
+import { FakePlaceSearchService } from './support/fake-places.js';
 import { FakeRoadService } from './support/fake-road-service.js';
+import { FakeRoutingService } from './support/fake-routing.js';
 import { InstantPacer, ManualPacer, settle } from './support/pacers.js';
 import type { Pacer } from '../src/sandbox/pacer.js';
 
@@ -25,7 +27,8 @@ describe("The life of a Rider's Sandbox", () => {
   const start = async <P extends Pacer>(pacer: P) => {
     const clock = new ManualClock(new Date('2026-01-01T00:00:00Z'));
     const roads = new FakeRoadService();
-    const app = await createTestApp({ clock, roads, pacer, config: { live: { intervalMs: 20, helloTimeoutMs: 200 } } });
+    const routing = new FakeRoutingService({ distanceM: 1_000, durationS: 100, geometry: [] });
+    const app = await createTestApp({ clock, roads, pacer, routing, places: new FakePlaceSearchService([]), config: { live: { intervalMs: 20, helloTimeoutMs: 200 } } });
     apps.push(app);
     await app.listen(0, '127.0.0.1');
     const rider = async () => {
@@ -107,6 +110,53 @@ describe("The life of a Rider's Sandbox", () => {
     clock.advance(10 * MINUTE);
 
     expect(await watch(token).first).toHaveLength(40);
+  });
+
+  const ends = { pickup: centre, dropoff: { lat: 42.39, lon: 20.44 } };
+  const actions: Array<[string, (app: INestApplication, token: string) => request.Test]> = [
+    ['asking for a route', (app, token) => request(app.getHttpServer()).post('/rider/route').set('Authorization', `Bearer ${token}`).send(ends)],
+    ['asking for the Fares', (app, token) => request(app.getHttpServer()).post('/rider/fare').set('Authorization', `Bearer ${token}`).send(ends)],
+    ['searching for a place', (app, token) => request(app.getHttpServer()).get('/rider/places?q=school').set('Authorization', `Bearer ${token}`)],
+    ['looking up the street at a pin', (app, token) => request(app.getHttpServer()).get('/rider/places/reverse?lat=42.38&lon=20.43').set('Authorization', `Bearer ${token}`)],
+  ];
+
+  describe.each(actions)('%s', (_, act) => {
+    it('counts as activity', async () => {
+      const { app, clock, rider, drivers, watch } = await start(new InstantPacer());
+      const token = await rider();
+      await drivers(token);
+      clock.advance(10 * MINUTE);
+      await act(app, token).expect(200);
+
+      clock.advance(10 * MINUTE);
+
+      expect(await watch(token).first).toHaveLength(40);
+    });
+
+    it('does not bring back a stopped Sandbox, which only opening it does', async () => {
+      const { app, clock, rider, drivers, watch } = await start(new InstantPacer());
+      const token = await rider();
+      await drivers(token);
+      clock.advance(15 * MINUTE);
+
+      await act(app, token).expect(200);
+
+      expect(await watch(token).first).toBe(4410);
+    });
+  });
+
+  it('is kept running only by its own Rider', async () => {
+    const { app, clock, rider, drivers, watch } = await start(new InstantPacer());
+    const [token, other] = [await rider(), await rider()];
+    await drivers(token);
+    await drivers(other);
+    clock.advance(10 * MINUTE);
+    await actions[0]![1](app, other).expect(200);
+
+    clock.advance(5 * MINUTE);
+
+    expect(await watch(token).first).toBe(4410);
+    expect(await watch(other).first).toHaveLength(40);
   });
 
   it('resumes the same Drivers from where they stopped when the Rider comes back', async () => {
