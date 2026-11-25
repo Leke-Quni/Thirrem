@@ -116,7 +116,7 @@ describe("A Rider's Ride Request", () => {
 
     clock.advance(MINUTE);
 
-    expect((await rider.sandbox()).rideRequest).toEqual(first);
+    expect((await rider.sandbox()).rideRequest).toEqual({ ...first, approach: expect.anything() });
   });
 
   it("shows the matched Driver's name, vehicle and rating", async () => {

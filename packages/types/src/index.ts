@@ -87,7 +87,19 @@ export interface RideRequest {
   offers: RideRequestOffer[];
   /** The matched Driver, or null while searching. */
   driver: MatchedDriver | null;
+  /** The matched Driver's drive to the Pickup Point, or null while searching. */
+  approach: Approach | null;
 }
+
+export type Approach =
+  /** The road route is still being looked for, and the Driver waits where it was matched. */
+  | { status: 'routing' }
+  /** No route could be had. `POST /rider/ride-requests/approach` looks for one again. */
+  | { status: 'unavailable' }
+  /** `geometry` is the road still ahead, starting where the Driver is. `etaS` is the seconds until it reaches the Pickup Point. */
+  | { status: 'driving'; geometry: Array<[number, number]>; etaS: number }
+  /** The Driver is waiting at the Pickup Point. */
+  | { status: 'arrived' };
 
 export interface MatchedDriver {
   id: string;

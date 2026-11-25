@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Headers, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Headers, HttpCode, Post, UseGuards } from '@nestjs/common';
 import type { RideRequest, VehicleType } from '@thirrem/types';
 import { AuthService } from '../auth/auth.service.js';
 import { parseCoordinate } from '../routing/requested-route.js';
@@ -29,5 +29,13 @@ export class RiderRideRequestController {
       dropoff: parseCoordinate(body?.dropoff, 'The Drop-off Point'),
       vehicleType: parseVehicleType(body?.vehicleType),
     });
+  }
+
+  @Post('ride-requests/approach')
+  @UseGuards(RideRequestRateLimitGuard)
+  @HttpCode(204)
+  async retryRoute(@Headers('authorization') authorization: string | undefined): Promise<void> {
+    const account = await this.auth.authenticate('rider', bearerToken(authorization));
+    await this.rideRequests.retryRoute(account.id);
   }
 }

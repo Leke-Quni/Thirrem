@@ -10,6 +10,7 @@ const rideRequest = (offers: RideRequestOffer[]): RideRequest => ({
   status: 'searching',
   offers,
   driver: null,
+  approach: null,
 });
 
 describe('carMarks', () => {
