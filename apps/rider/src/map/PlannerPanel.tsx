@@ -1,4 +1,5 @@
 import type { PlaceResult, VehicleType } from '@thirrem/types';
+import type { CSSProperties } from 'react';
 import { formatDistance, formatDuration } from './format';
 import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
@@ -32,6 +33,15 @@ const SLOTS: Array<{ slot: PinSlot; label: string }> = [
 ];
 
 const describe = (point: PlanPoint) => (point.origin === 'device' ? 'Your location' : (point.label ?? 'Set on the map'));
+
+function Figure({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd style={{ '--chars': value.length } as CSSProperties}>{value}</dd>
+    </div>
+  );
+}
 
 function Glyph({ slot }: { slot: PinSlot }) {
   if (slot === 'pickup') return <span className="pin-glyph pin-pickup" aria-hidden="true" />;
@@ -106,14 +116,8 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
         )}
         {route.status === 'ready' && (
           <dl className="route-figures">
-            <div>
-              <dt>Distance</dt>
-              <dd>{formatDistance(route.route.distanceM)}</dd>
-            </div>
-            <div>
-              <dt>Drive time</dt>
-              <dd>{formatDuration(route.route.durationS)}</dd>
-            </div>
+            <Figure label="Distance" value={formatDistance(route.route.distanceM)} />
+            <Figure label="Drive time" value={formatDuration(route.route.durationS)} />
           </dl>
         )}
         {route.status === 'error' && (

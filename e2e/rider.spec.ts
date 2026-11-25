@@ -382,10 +382,15 @@ test.describe('Rider ride planner', () => {
     await expect(page.getByRole('radio', { name: /economy/i })).toBeVisible();
   });
 
-  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
-    test(`does not resize the planner as the Fares load and arrive, at ${viewport.width} px wide`, async ({ page }) => {
+  const trips = [
+    { name: 'a short trip', distanceM: 1850, durationS: 241, shown: '1.9 km' },
+    { name: 'a long trip', distanceM: 86_000, durationS: 5250, shown: '1 h 28 min' },
+    { name: 'a trip across a continent', distanceM: 5_432_100, durationS: 215_940, shown: '59 h 59 min' },
+  ];
+  for (const { viewport, trip } of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 700 }].flatMap((viewport) => trips.map((trip) => ({ viewport, trip })))) {
+    test(`does not resize the planner as the route and Fares arrive for ${trip.name}, at ${viewport.width} px wide`, async ({ page }) => {
       await page.setViewportSize(viewport);
-      await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+      await page.route('**/rider/route', (r) => r.fulfill({ json: { ...route, distanceM: trip.distanceM, durationS: trip.durationS } }));
       await signUpAndOpenPlanner(page);
       let release!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
@@ -401,6 +406,7 @@ test.describe('Rider ride planner', () => {
       const loading = await height();
       release();
       await expect(page.getByRole('radio', { name: /xl/i })).toBeVisible();
+      await expect(page.getByText(trip.shown)).toBeVisible();
 
       expect(loading).toBe(empty);
       expect(await height()).toBe(empty);
