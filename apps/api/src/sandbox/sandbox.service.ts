@@ -3,7 +3,7 @@ import { ConflictException, Inject, Injectable, ServiceUnavailableException } fr
 import type { Coordinate, SandboxBusyResponse, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
-import { isPickedUp, matchedDriverPosition, resumedRideRequest, rideView } from '../dispatch/ride.js';
+import { isCompleted, isPickedUp, matchedDriverPosition, resumedRideRequest, rideView } from '../dispatch/ride.js';
 import { isUnderWay, matchedDriverId, rideRequestView } from '../dispatch/ride-request.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
@@ -17,6 +17,11 @@ import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
 
 const BUSY: SandboxBusyResponse = { code: 'SANDBOX_LIMIT', message: 'All Sandboxes are busy right now. Please try again in a few minutes.' };
 const busy = () => new ServiceUnavailableException(BUSY);
+
+/** Nothing drives while a Sandbox is stopped, so a stopped one is judged as it was when it stopped. */
+function hasRideUnderWay({ rideRequest, resumedAtMs, lastActiveMs }: Sandbox, nowMs: number): boolean {
+  return rideRequest !== undefined && isUnderWay(rideRequest, resumedAtMs, Math.min(nowMs, stoppedAtMs(lastActiveMs)));
+}
 
 @Injectable()
 export class SandboxService extends RiderActivity {
@@ -69,9 +74,10 @@ export class SandboxService extends RiderActivity {
     change: (sandbox: Sandbox, drivers: SimulatedDriver[], nowMs: number, positionAt: (driverId: string, atMs: number) => PathPosition) => { sandbox: Sandbox; result: T },
   ): Promise<T> {
     return this.inTurn(accountId, async () => {
-      const found = await this.sandboxes.findByAccount(accountId);
+      const stored = await this.sandboxes.findByAccount(accountId);
       const now = this.clock.now().getTime();
-      if (!found || sandboxStatus(found.lastActiveMs, now) !== 'running') throw new ConflictException('Your Sandbox is not running. Resume it, then try again.');
+      if (!stored || sandboxStatus(stored.lastActiveMs, now) !== 'running') throw new ConflictException('Your Sandbox is not running. Resume it, then try again.');
+      const found = this.droppedOff(stored, now);
       const positionAt = (driverId: string, atMs: number) => driverAt(found.drivers.find((driver) => driver.id === driverId)!, found.area, found.resumedAtMs, atMs);
       const { sandbox, result } = change(this.active(found, now), this.view(found, now).drivers, now, positionAt);
       await this.sandboxes.save(accountId, sandbox);
@@ -95,18 +101,28 @@ export class SandboxService extends RiderActivity {
     const matchedId = rideRequest && matchedDriverId(rideRequest, nowMs);
     const matched = drivers.find((driver) => driver.id === matchedId);
     const driver = matched ? { id: matched.id, ...matched.profile } : null;
+    const completed = rideRequest !== undefined && isCompleted(rideRequest, resumedAtMs, nowMs);
     // From pickup on, the Rider is told of a Ride in place of the Ride Request.
-    const ride = rideRequest && driver && isPickedUp(rideRequest, resumedAtMs, nowMs) ? rideView(rideRequest, driver, resumedAtMs, nowMs) : null;
+    const ride = rideRequest && driver && isPickedUp(rideRequest, resumedAtMs, nowMs) ? rideView(rideRequest, driver, this.config.fareRates, resumedAtMs, nowMs) : null;
     return {
       drivers: drivers.map((each) => ({
         ...driverAt(each, area, resumedAtMs, nowMs),
-        // The matched Driver has left its path for the Rider.
+        // The matched Driver has left its path for the Rider, and is Available again once the Ride has completed.
         ...(each === matched && rideRequest && matchedDriverPosition(rideRequest, resumedAtMs, nowMs)),
-        available: each !== matched,
+        available: each !== matched || completed,
       })),
       rideRequest: rideRequest && !ride ? rideRequestView(rideRequest, driver, resumedAtMs, nowMs) : null,
       ride,
     };
+  }
+
+  /** The Sandbox with the Driver of a completed Ride kept where it ended, so that it stays there once another Ride Request takes the Ride's place. */
+  private droppedOff(sandbox: Sandbox, nowMs: number): Sandbox {
+    const { rideRequest, resumedAtMs } = sandbox;
+    if (!rideRequest || !isCompleted(rideRequest, resumedAtMs, nowMs)) return sandbox;
+    const matchedId = matchedDriverId(rideRequest, nowMs);
+    const parked = matchedDriverPosition(rideRequest, resumedAtMs, nowMs);
+    return { ...sandbox, drivers: sandbox.drivers.map((driver) => (driver.id === matchedId ? { ...driver, parked } : driver)) };
   }
 
   private inTurn<T>(accountId: string, task: () => Promise<T>): Promise<T> {
@@ -125,7 +141,7 @@ export class SandboxService extends RiderActivity {
     const askedAtMs = this.clock.now().getTime();
     const reused =
       existing &&
-      ((existing.rideRequest && isUnderWay(existing.rideRequest, askedAtMs)) || distanceM(existing.centre, centre) <= SAME_PLACE_M) &&
+      (hasRideUnderWay(existing, askedAtMs) || distanceM(existing.centre, centre) <= SAME_PLACE_M) &&
       sandboxStatus(existing.lastActiveMs, askedAtMs) !== 'discarded';
     // Checked before placing too, so that a Rider who will be turned away costs the road service nothing.
     if (!reused && !(await this.sandboxes.hasRoom(accountId, runningCutoffMs(this.clock.now().getTime()), this.config.sandboxLimit))) throw busy();

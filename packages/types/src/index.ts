@@ -42,10 +42,13 @@ export interface StreetResponse {
 
 export type VehicleType = 'economy' | 'comfort' | 'xl' | 'electric';
 
-export interface FareQuote {
-  vehicleType: VehicleType;
+export interface Fare {
   amountCents: number;
   currency: 'EUR';
+}
+
+export interface FareQuote extends Fare {
+  vehicleType: VehicleType;
 }
 
 export interface FareResponse {
@@ -104,6 +107,8 @@ export interface Ride {
   driver: MatchedDriver;
   /** The drive to the Drop-off Point. */
   progress: DriveProgress;
+  /** What the Rider pays, set once the Ride has completed at the Drop-off Point. */
+  finalFare: Fare | null;
 }
 
 /** How far the Driver is with a drive: the one to the Pickup Point, or the Ride's to the Drop-off Point. */

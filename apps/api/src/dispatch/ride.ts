@@ -1,6 +1,8 @@
 import type { MatchedDriver, Ride } from '@thirrem/types';
+import { calculateFare } from '../fares/fare-calculator.js';
+import type { FareRates } from '../fares/fare-rates.js';
 import type { PathPosition } from '../sandbox/road-path.js';
-import { driveEnd, driveEndsAtMs, drivePosition, driveProgress, resumedDrive } from './drive.js';
+import { driveEnd, driveEndsAtMs, drivenRoute, drivePosition, driveProgress, resumedDrive } from './drive.js';
 import type { StoredRideRequest } from './ride-request.js';
 
 /**
@@ -17,6 +19,17 @@ export function isPickedUp(rideRequest: StoredRideRequest, resumedAtMs: number, 
   return atMs !== undefined && atMs <= nowMs;
 }
 
+/** The Ride's route once it has been driven to the Drop-off Point, which is what completes the Ride. */
+function completedRoute(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number) {
+  if (!isPickedUp(rideRequest, resumedAtMs, nowMs)) return undefined;
+  return drivenRoute(rideRequest.rideRoute ?? null, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs);
+}
+
+/** Whether the vehicle has reached the Drop-off Point by `nowMs`. */
+export function isCompleted(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): boolean {
+  return completedRoute(rideRequest, resumedAtMs, nowMs) !== undefined;
+}
+
 /** Where the matched Driver is at `nowMs`: on its way to the Pickup Point, or on the Ride. Undefined without a Driver due to be matched. */
 export function matchedDriverPosition(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): PathPosition | undefined {
   const { approach, rideRoute = null } = rideRequest;
@@ -27,9 +40,18 @@ export function matchedDriverPosition(rideRequest: StoredRideRequest, resumedAtM
 }
 
 /** The Ride as the Rider is told of it at `nowMs`, which is only once they have been picked up. */
-export function rideView(rideRequest: StoredRideRequest, driver: MatchedDriver, resumedAtMs: number, nowMs: number): Ride {
+export function rideView(rideRequest: StoredRideRequest, driver: MatchedDriver, rates: FareRates, resumedAtMs: number, nowMs: number): Ride {
   const { id, vehicleType, pickup, dropoff, rideRoute = null } = rideRequest;
-  return { id, vehicleType, pickup, dropoff, driver, progress: driveProgress(rideRoute, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs) };
+  const completed = completedRoute(rideRequest, resumedAtMs, nowMs);
+  return {
+    id,
+    vehicleType,
+    pickup,
+    dropoff,
+    driver,
+    progress: driveProgress(rideRoute, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs),
+    finalFare: completed ? calculateFare(rates, vehicleType, completed) : null,
+  };
 }
 
 /** That of a Sandbox that stopped at `stoppedMs`, set to carry on at `nowMs` from where it was. */

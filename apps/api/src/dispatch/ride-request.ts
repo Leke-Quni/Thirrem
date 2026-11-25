@@ -2,7 +2,7 @@ import type { Coordinate, MatchedDriver, RideRequest, RideRequestStatus, Simulat
 import type { StoredApproach } from './approach.js';
 import { type DriveRoute, driveProgress } from './drive.js';
 import { searchAreas } from './quadtree.js';
-import { isPickedUp } from './ride.js';
+import { isCompleted, isPickedUp } from './ride.js';
 
 export interface RideRequestInput {
   pickup: Coordinate;
@@ -72,14 +72,14 @@ function statusAt(rideRequest: StoredRideRequest, nowMs: number): RideRequestSta
   return nowMs < rideRequest.broadcasts.at(-1)!.endsAtMs ? 'searching' : 'failed';
 }
 
-/** Still looking for a Driver or with one: it has not failed, whether or not it has since become a Ride. */
-export function isUnderWay(rideRequest: StoredRideRequest, nowMs: number): boolean {
-  return statusAt(rideRequest, nowMs) !== 'failed';
+/** Still looking for a Driver, with one, or on the Ride it became: it has neither failed nor completed. */
+export function isUnderWay(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): boolean {
+  return statusAt(rideRequest, nowMs) !== 'failed' && !isCompleted(rideRequest, resumedAtMs, nowMs);
 }
 
 /** A Ride Request is open until the Rider is picked up, or it fails. */
 export function isOpen(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): boolean {
-  return isUnderWay(rideRequest, nowMs) && !isPickedUp(rideRequest, resumedAtMs, nowMs);
+  return isUnderWay(rideRequest, resumedAtMs, nowMs) && !isPickedUp(rideRequest, resumedAtMs, nowMs);
 }
 
 /** The Ride Request as the Rider is told of it at `nowMs`. `driver` is the one matched, or null if none is. */

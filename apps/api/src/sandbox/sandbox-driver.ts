@@ -1,7 +1,7 @@
 import type { SimulatedDriver } from '@thirrem/types';
 import type { Area } from './area.js';
 import { type DriverProfile, driverProfile } from './driver-profile.js';
-import type { RoadPath } from './road-path.js';
+import type { PathPosition, RoadPath } from './road-path.js';
 
 type Random = () => number;
 
@@ -16,6 +16,8 @@ export interface SandboxDriver {
   pace: number;
   /** Set when a path was ready as the Sandbox opened, or when it resumed: the Driver starts part of the way round it. */
   joined: { path: RoadPath; startM: number; atMs: number } | null;
+  /** Set once the Driver has dropped a Rider off: it waits there, off its path. */
+  parked?: PathPosition;
 }
 
 export function sandboxDriver(id: string, station: number, area: Area, nowMs: number, random: Random): SandboxDriver {
@@ -41,10 +43,11 @@ const metresAlong = ({ path, startM, atMs }: Drive, pace: number, nowMs: number)
 
 /** The Driver as it is at `nowMs`: driving its path, or parked while it has none. */
 export function driverAt(driver: SandboxDriver, area: Area, resumedAtMs: number, nowMs: number): Omit<SimulatedDriver, 'available'> {
-  const parked = area.stations[driver.station]!;
+  const station = area.stations[driver.station]!;
+  if (driver.parked) return { id: driver.id, vehicleType: station.vehicleType, ...driver.parked };
   const drive = driveOf(driver, area, resumedAtMs);
-  if (!drive) return { id: driver.id, ...parked };
-  return { id: driver.id, vehicleType: parked.vehicleType, ...drive.path.at(metresAlong(drive, driver.pace, nowMs)) };
+  if (!drive) return { id: driver.id, ...station };
+  return { id: driver.id, vehicleType: station.vehicleType, ...drive.path.at(metresAlong(drive, driver.pace, nowMs)) };
 }
 
 /** The Driver of a Sandbox that stopped at `stoppedMs`, set to carry on at `nowMs` from where it was. */
