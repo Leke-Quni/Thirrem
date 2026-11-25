@@ -7,6 +7,7 @@ import { RiderAuthController } from './auth/rider-auth.controller.js';
 import type { AppConfig } from './config/app-config.js';
 import { APP_CONFIG, appConfigProvider } from './config/app-config.provider.js';
 import { DatabaseService } from './database/database.service.js';
+import { RiderFareController } from './fares/rider-fare.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
@@ -18,13 +19,13 @@ import { CachingPlaceSearchService } from './places/caching-place-search.service
 import { PhotonPlaceSearchService } from './places/photon-place-search.service.js';
 import { PlaceSearchService } from './places/place-search.service.js';
 import { RiderPlacesController } from './places/rider-places.controller.js';
-import { AuthRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
+import { AuthRateLimitGuard, FareRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderPlacesController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -40,6 +41,7 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
       inject: [APP_CONFIG],
     },
     RouteRateLimitGuard,
+    FareRateLimitGuard,
     SearchRateLimitGuard,
     { provide: SEARCH_RATE_LIMIT, useFactory: (config: AppConfig) => config.searchRateLimit, inject: [APP_CONFIG] },
     {

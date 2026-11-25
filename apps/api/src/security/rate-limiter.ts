@@ -65,6 +65,15 @@ export class RouteRateLimitGuard extends RateLimitGuard {
 }
 
 @Injectable()
+export class FareRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many Fare requests. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(ROUTE_RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
+  }
+}
+
+@Injectable()
 export class SearchRateLimitGuard extends RateLimitGuard {
   protected readonly message = 'Too many searches. Please wait a minute and try again.';
 
