@@ -1067,6 +1067,85 @@ test.describe('Rider Sandbox with simulated Drivers', () => {
       });
     }
 
+    test.describe('when every Sandbox is busy', () => {
+      const refusal = { status: 503, json: { code: 'SANDBOX_LIMIT', message: 'All Sandboxes are busy right now. Please try again in a few minutes.' } };
+      const card = (page: Page) => page.getByRole('alert').filter({ hasText: 'All Sandboxes are busy' });
+
+      test('says so, and shows the Drivers once trying again finds a place', async ({ page }) => {
+        let attempts = 0;
+        await page.route('**/rider/sandbox', (r) => (++attempts === 1 ? r.fulfill(refusal) : r.fulfill({ json: { drivers: driversAround(gjakova) } })));
+        await openHome(page);
+
+        await expect(card(page)).toContainText('Try again in a few minutes.');
+        await expect(drivers(page)).toHaveCount(0);
+        await card(page).getByRole('button', { name: 'Try again' }).click();
+
+        await expect(drivers(page)).toHaveCount(40);
+        await expect(card(page)).toHaveCount(0);
+      });
+
+      test('stays in place while trying again, without losing focus or asking twice', async ({ page }) => {
+        let attempts = 0;
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        await page.route('**/rider/sandbox', async (r) => {
+          if (++attempts > 1) await gate;
+          return r.fulfill(refusal);
+        });
+        await openHome(page);
+        const button = card(page).getByRole('button');
+
+        await button.focus();
+        await page.keyboard.press('Enter');
+
+        await expect(button).toHaveText('Trying…');
+        await expect(button).toHaveAttribute('aria-disabled', 'true');
+        await expect(button).toBeFocused();
+        await page.keyboard.press('Enter');
+        release();
+        await expect(button).toHaveText('Try again');
+        await expect(button).toBeFocused();
+        expect(attempts).toBe(2);
+      });
+
+      test('keeps the stopped cars when a Sandbox cannot be continued yet, and continues it later', async ({ page }) => {
+        await page.clock.install();
+        const connections = await liveFeed(page);
+        const opened: Array<{ fresh?: boolean }> = [];
+        await page.route('**/rider/sandbox', (r) => {
+          opened.push(r.request().postDataJSON());
+          return opened.length === 2 ? r.fulfill(refusal) : r.fulfill({ json: { drivers: [car] } });
+        });
+        await openHome(page);
+        await expect.poll(() => connections[0]?.told.length).toBe(1);
+        await connections[0]!.socket.close({ code: 4410 });
+
+        await page.getByRole('dialog').getByRole('button', { name: 'Continue' }).click();
+
+        await expect(card(page)).toBeVisible();
+        await expect(drivers(page)).toHaveCount(1);
+        await card(page).getByRole('button', { name: 'Try again' }).click();
+        await expect(page.getByRole('status').filter({ hasText: '1 simulated Driver nearby' })).toBeVisible();
+        expect(opened.at(-1)?.fresh).toBeUndefined();
+      });
+
+      for (const width of [320, 1280]) {
+        test(`keeps the busy message inside the map and clear of the zoom buttons at ${width} px wide`, async ({ page }) => {
+          await page.setViewportSize({ width, height: 800 });
+          await page.route('**/rider/sandbox', (r) => r.fulfill(refusal));
+          await openHome(page);
+
+          const message = (await card(page).boundingBox())!;
+          const map = (await page.locator('.map-card').boundingBox())!;
+          const zoom = (await page.getByRole('button', { name: 'Zoom in' }).boundingBox())!;
+
+          expect(message.x).toBeGreaterThanOrEqual(map.x);
+          expect(message.x + message.width).toBeLessThanOrEqual(zoom.x);
+          expect(message.y + message.height).toBeLessThanOrEqual(map.y + map.height);
+        });
+      }
+    });
+
     test('opens the Sandbox again when the server no longer has it', async ({ page }) => {
       const connections = await liveFeed(page);
       let opened = 0;
