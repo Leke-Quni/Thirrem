@@ -33,7 +33,7 @@ describe('liveUrl', () => {
 
 describe('watchDrivers', () => {
   let sockets: FakeSocket[];
-  const handlers = { onDrivers: vi.fn(), onLost: vi.fn(), onGone: vi.fn() };
+  const handlers = { onDrivers: vi.fn(), onLost: vi.fn(), onGone: vi.fn(), onStopped: vi.fn(), onDiscarded: vi.fn() };
   const watch = () =>
     watchDrivers({
       token: 'secret',
@@ -103,6 +103,58 @@ describe('watchDrivers', () => {
 
     expect(handlers.onGone).toHaveBeenCalledOnce();
     expect(sockets).toHaveLength(1);
+  });
+
+  describe('once the Sandbox has stopped', () => {
+    const stoppedFeed = () => {
+      watch();
+      sockets[0]!.onclose?.({ code: 4410 });
+    };
+
+    it('says so and leaves it stopped', () => {
+      stoppedFeed();
+
+      expect(handlers.onStopped).toHaveBeenCalledOnce();
+      expect(handlers.onGone).not.toHaveBeenCalled();
+      expect(handlers.onLost).not.toHaveBeenCalled();
+    });
+
+    it('looks again once a minute, whether or not the server answers', () => {
+      stoppedFeed();
+      vi.advanceTimersByTime(59_999);
+      expect(sockets).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(sockets).toHaveLength(2);
+
+      sockets[1]!.onclose?.({ code: 1006 });
+      vi.advanceTimersByTime(60_000);
+
+      expect(sockets).toHaveLength(3);
+      expect(handlers.onLost).not.toHaveBeenCalled();
+    });
+
+    it('says when it has been discarded, and does not open a new one by itself', () => {
+      stoppedFeed();
+      vi.advanceTimersByTime(60_000);
+
+      sockets[1]!.onclose?.({ code: 4404 });
+      vi.advanceTimersByTime(600_000);
+
+      expect(handlers.onDiscarded).toHaveBeenCalledOnce();
+      expect(handlers.onGone).not.toHaveBeenCalled();
+      expect(sockets).toHaveLength(2);
+    });
+
+    it('carries on if the Sandbox was resumed elsewhere', () => {
+      stoppedFeed();
+      vi.advanceTimersByTime(60_000);
+
+      sockets[1]!.drivers([driver]);
+      sockets[1]!.onclose?.({ code: 1006 });
+
+      expect(handlers.onDrivers).toHaveBeenCalledWith([driver]);
+      expect(handlers.onLost).toHaveBeenCalledOnce();
+    });
   });
 
   it('goes back to the API when the session is not accepted, which says why', () => {

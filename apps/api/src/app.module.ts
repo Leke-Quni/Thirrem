@@ -27,10 +27,12 @@ import { InMemorySandboxRepository } from './sandbox/in-memory-sandbox.repositor
 import { OsrmRoadService } from './sandbox/osrm-road-service.js';
 import { Pacer, SystemPacer } from './sandbox/pacer.js';
 import { PathFetcher } from './sandbox/path-fetcher.js';
+import { RiderActivity } from './sandbox/rider-activity.js';
 import { RiderLiveGateway } from './sandbox/rider-live.gateway.js';
 import { RiderSandboxController } from './sandbox/rider-sandbox.controller.js';
 import { RoadService } from './sandbox/road-service.js';
 import { SandboxRepository } from './sandbox/sandbox.repository.js';
+import { SandboxSweeper } from './sandbox/sandbox-sweeper.js';
 import { SandboxService } from './sandbox/sandbox.service.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
@@ -56,7 +58,9 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     FareRateLimitGuard,
     SandboxRateLimitGuard,
     SandboxService,
+    { provide: RiderActivity, useExisting: SandboxService },
     RiderLiveGateway,
+    SandboxSweeper,
     AreaService,
     PathFetcher,
     { provide: Pacer, useClass: SystemPacer },

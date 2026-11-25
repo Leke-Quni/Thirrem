@@ -946,6 +946,127 @@ test.describe('Rider Sandbox with simulated Drivers', () => {
       await expect(drivers(page)).toHaveAttribute('style', /rotateZ\(200deg\)/);
     });
 
+    /** A page whose Sandbox has just stopped, keeping what each request to open it asked for. */
+    const stoppedSandbox = async (page: Page) => {
+      await page.clock.install();
+      const connections = await liveFeed(page);
+      const opened: Array<{ fresh?: boolean }> = [];
+      await page.route('**/rider/sandbox', (r) => {
+        const body = r.request().postDataJSON();
+        opened.push(body);
+        return r.fulfill({ json: { drivers: [body.fresh ? { ...car, id: 'new', heading: 200 } : car] } });
+      });
+      await openHome(page);
+      await expect.poll(() => connections[0]?.told.length).toBe(1);
+      await connections[0]!.socket.close({ code: 4410 });
+      const dialog = page.getByRole('dialog', { name: 'Your Sandbox timed out' });
+      await expect(dialog).toBeVisible();
+      return { connections, opened, dialog };
+    };
+    const nearby = (page: Page) => page.getByRole('status').filter({ hasText: '1 simulated Driver nearby' });
+    const stoppedNote = (page: Page) => page.getByRole('status').filter({ hasText: 'Sandbox stopped after 15 minutes without activity.' });
+
+    test('says the Sandbox timed out, keeps the cars, and offers to continue or start a new one', async ({ page }) => {
+      const { dialog, opened, connections } = await stoppedSandbox(page);
+
+      await expect(dialog).toContainText('It stopped after 15 minutes without activity.');
+      await expect(dialog.getByRole('button', { name: 'Continue' })).toBeFocused();
+      await expect(dialog.getByRole('button', { name: 'Start a new one' })).toBeVisible();
+      await expect(drivers(page)).toHaveCount(1);
+      // Long enough for any automatic reconnection to show itself.
+      await page.waitForTimeout(2_500);
+      expect([opened.length, connections.length]).toEqual([1, 1]);
+    });
+
+    test('continues the same Sandbox', async ({ page }) => {
+      const { dialog, opened, connections } = await stoppedSandbox(page);
+
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+
+      await expect(dialog).toBeHidden();
+      await expect(nearby(page)).toBeVisible();
+      await expect.poll(() => connections[1]?.told.length).toBe(1);
+      expect(opened.map((body) => body.fresh ?? false)).toEqual([false, false]);
+      await expect(drivers(page)).toHaveAttribute('style', /rotateZ\(90deg\)/);
+    });
+
+    test('starts a new Sandbox', async ({ page }) => {
+      const { dialog, opened } = await stoppedSandbox(page);
+
+      await dialog.getByRole('button', { name: 'Start a new one' }).click();
+
+      await expect(dialog).toBeHidden();
+      await expect(nearby(page)).toBeVisible();
+      expect(opened.map((body) => body.fresh ?? false)).toEqual([false, true]);
+      await expect(drivers(page)).toHaveAttribute('style', /rotateZ\(200deg\)/);
+    });
+
+    for (const [how, dismiss] of [
+      ['Escape', (page: Page) => page.keyboard.press('Escape')],
+      ['the close button', (page: Page) => page.getByRole('button', { name: 'Close' }).click()],
+    ] as const) {
+      test(`closes with ${how} without choosing, leaving a way to resume on the map`, async ({ page }) => {
+        const { dialog, opened } = await stoppedSandbox(page);
+
+        await dismiss(page);
+
+        await expect(dialog).toBeHidden();
+        await expect(stoppedNote(page)).toBeVisible();
+        expect(opened).toHaveLength(1);
+        await page.getByRole('button', { name: 'Resume Sandbox' }).click();
+        await expect(nearby(page)).toBeVisible();
+      });
+    }
+
+    test('resumes when a pin is moved after closing, and asks again at the next timeout', async ({ page }) => {
+      const { dialog, opened, connections } = await stoppedSandbox(page);
+      await page.keyboard.press('Escape');
+
+      await choosePickup(page, { name: 'Nearby Road', lat: gjakova.lat + 0.002, lon: gjakova.lon });
+
+      await expect(nearby(page)).toBeVisible();
+      expect(opened).toHaveLength(2);
+      await expect.poll(() => connections[1]?.told.length).toBe(1);
+      await connections[1]!.socket.close({ code: 4410 });
+      await expect(dialog).toBeVisible();
+    });
+
+    test('offers only a new Sandbox once the old one has been discarded', async ({ page }) => {
+      const { dialog, opened, connections } = await stoppedSandbox(page);
+      await page.clock.fastForward(60_000);
+      await expect.poll(() => connections[1]?.told.length).toBe(1);
+
+      await connections[1]!.socket.close({ code: 4404 });
+
+      await expect(dialog).toContainText('It is no longer available.');
+      await expect(dialog.getByRole('button', { name: 'Continue' })).toHaveCount(0);
+      expect(opened).toHaveLength(1);
+      await dialog.getByRole('button', { name: 'Start a new one' }).click();
+      await expect(nearby(page)).toBeVisible();
+      expect(opened.at(-1)?.fresh).toBe(true);
+    });
+
+    for (const width of [320, 1280]) {
+      test(`keeps the timeout message and its buttons on screen at ${width} px wide`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 640 });
+        const { dialog } = await stoppedSandbox(page);
+
+        const panel = (await dialog.boundingBox())!;
+        expect(panel.x).toBeGreaterThanOrEqual(0);
+        expect(panel.x + panel.width).toBeLessThanOrEqual(width);
+        expect(panel.y + panel.height).toBeLessThanOrEqual(640);
+        for (const name of ['Continue', 'Start a new one', 'Close']) {
+          const button = (await dialog.getByRole('button', { name }).boundingBox())!;
+          expect(button.x).toBeGreaterThanOrEqual(panel.x);
+          expect(button.x + button.width).toBeLessThanOrEqual(panel.x + panel.width);
+        }
+        await page.keyboard.press('Escape');
+        const note = (await page.locator('.map-status').boundingBox())!;
+        const zoom = (await page.getByRole('button', { name: 'Zoom in' }).boundingBox())!;
+        expect(note.x + note.width).toBeLessThanOrEqual(zoom.x);
+      });
+    }
+
     test('opens the Sandbox again when the server no longer has it', async ({ page }) => {
       const connections = await liveFeed(page);
       let opened = 0;

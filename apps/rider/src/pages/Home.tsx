@@ -33,7 +33,7 @@ export function Home() {
   const { state: fare, retry: retryFare } = useFareQuote(plan.pickup, plan.dropoff);
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
-  const { state: sandbox, retry: retrySandbox } = useSandbox(sandboxCentre(device.location, plan.pickup));
+  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
 
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -125,7 +125,7 @@ export function Home() {
             onFailure={() => setMapState('failed')}
           />
           <div className="map-crosshair" aria-hidden="true" />
-          {mapState === 'ready' && <SandboxStatus sandbox={sandbox} onRetry={retrySandbox} />}
+          {mapState === 'ready' && <SandboxStatus sandbox={sandbox} onRetry={retrySandbox} onStartNew={startNewSandbox} />}
           {mapState === 'loading' && (
             <div className="map-loading" role="status">
               <RouteLoader label="Loading the map…" />

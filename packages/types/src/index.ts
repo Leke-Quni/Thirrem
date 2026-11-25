@@ -71,5 +71,5 @@ export interface SandboxLiveMessage {
   data: SandboxResponse;
 }
 
-/** Why the live feed closes: an unknown session, no Sandbox to watch, or no token sent in time. */
-export type SandboxLiveCloseCode = 4401 | 4404 | 4408;
+/** Why the live feed closes: an unknown session, no Sandbox to watch, no token sent in time, or a stopped Sandbox. */
+export type SandboxLiveCloseCode = 4401 | 4404 | 4408 | 4410;
