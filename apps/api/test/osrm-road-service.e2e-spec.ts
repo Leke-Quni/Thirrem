@@ -73,6 +73,30 @@ describe('OsrmRoadService', () => {
     await expect(new OsrmRoadService(baseUrl).headings(points)).rejects.toThrow(/NoRoute/);
   });
 
+  it('fetches the road route through every point as one path with its duration', async () => {
+    reply = { status: 200, body: { code: 'Ok', routes: [{ duration: 95.5, geometry: { coordinates: [[20.4309, 42.3804], [20.422, 42.3713], [20.4309, 42.3804]] } }] } };
+
+    const result = await new OsrmRoadService(baseUrl).route([...points, points[0]!]);
+
+    expect(lastPath).toBe('/route/v1/driving/20.430800,42.380300;20.421988,42.371235;20.430800,42.380300?overview=full&geometries=geojson');
+    expect(result).toEqual({
+      durationS: 95.5,
+      points: [
+        { lat: 42.3804, lon: 20.4309 },
+        { lat: 42.3713, lon: 20.422 },
+        { lat: 42.3804, lon: 20.4309 },
+      ],
+    });
+  });
+
+  it('fails when there is no road route or the answer holds no path', async () => {
+    reply = { status: 400, body: { code: 'NoRoute' } };
+    await expect(new OsrmRoadService(baseUrl).route(points)).rejects.toThrow(/NoRoute/);
+
+    reply = { status: 200, body: { code: 'Ok', routes: [] } };
+    await expect(new OsrmRoadService(baseUrl).route(points)).rejects.toThrow();
+  });
+
   it('fails when OSRM cannot be reached', async () => {
     await expect(new OsrmRoadService('http://127.0.0.1:1').snap(points)).rejects.toThrow();
   });
