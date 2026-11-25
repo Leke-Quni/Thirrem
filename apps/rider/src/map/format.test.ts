@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDistance, formatDuration, formatFare } from './format';
+import { formatCountdown, formatDistance, formatDuration, formatFare } from './format';
 
 describe('formatDistance', () => {
   it('shows metres under a kilometre, rounded to ten', () => {
@@ -28,5 +28,15 @@ describe('formatFare', () => {
   });
   it('groups thousands', () => {
     expect(formatFare(123456)).toBe('€1,234.56');
+  });
+});
+
+describe('formatCountdown', () => {
+  it.each([
+    [900, '15:00'],
+    [61, '1:01'],
+    [9, '0:09'],
+  ])('shows %i seconds as %s', (seconds, text) => {
+    expect(formatCountdown(seconds)).toBe(text);
   });
 });

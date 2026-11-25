@@ -33,7 +33,7 @@ export function SandboxStatus({ sandbox, onRetry, onStartNew }: SandboxStatusPro
           </>
         )}
       </p>
-      {timedOut && !dismissed && <SandboxTimeoutDialog discarded={connection === 'discarded'} onContinue={onRetry} onStartNew={onStartNew} onClose={() => setDismissed(true)} />}
+      {timedOut && !dismissed && <SandboxTimeoutDialog discarded={connection === 'discarded'} cancellation={(sandbox.status === 'ready' && sandbox.rideRequest?.cancellation) || null} onContinue={onRetry} onStartNew={onStartNew} onClose={() => setDismissed(true)} />}
       {sandbox.status === 'busy' && <SandboxBusy retrying={sandbox.retrying} onRetry={onRetry} />}
       {sandbox.status === 'error' && (
         <div className="map-status is-error" role="alert">
