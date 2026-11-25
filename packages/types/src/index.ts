@@ -64,3 +64,12 @@ export interface SimulatedDriver extends Coordinate {
 export interface SandboxResponse {
   drivers: SimulatedDriver[];
 }
+
+/** What the live feed at `/rider/live` sends, after being told `{ event: 'watch', data: { token } }`. */
+export interface SandboxLiveMessage {
+  event: 'drivers';
+  data: SandboxResponse;
+}
+
+/** Why the live feed closes: an unknown session, no Sandbox to watch, or no token sent in time. */
+export type SandboxLiveCloseCode = 4401 | 4404 | 4408;

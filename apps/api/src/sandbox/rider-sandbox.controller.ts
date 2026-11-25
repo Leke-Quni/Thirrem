@@ -18,7 +18,6 @@ export class RiderSandboxController {
   @UseGuards(SandboxRateLimitGuard)
   async open(@Headers('authorization') authorization: string | undefined, @Body() body: { centre?: unknown }): Promise<SandboxResponse> {
     const account = await this.auth.authenticate('rider', bearerToken(authorization));
-    const { drivers } = await this.sandboxes.open(account.id, parseCoordinate(body?.centre, 'The Sandbox centre'));
-    return { drivers };
+    return { drivers: await this.sandboxes.open(account.id, parseCoordinate(body?.centre, 'The Sandbox centre')) };
   }
 }

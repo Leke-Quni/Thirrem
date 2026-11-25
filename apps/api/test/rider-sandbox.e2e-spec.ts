@@ -25,7 +25,7 @@ describe("The Rider's Sandbox and its simulated Drivers", () => {
   const ids = (body: SandboxResponse) => body.drivers.map((driver) => driver.id).sort();
 
   beforeAll(async () => {
-    app = await createTestApp({ roads });
+    app = await createTestApp({ roads, clock: new ManualClock(new Date('2026-01-01T00:00:00Z')) });
   });
   afterAll(async () => {
     await app.close();
@@ -45,17 +45,20 @@ describe("The Rider's Sandbox and its simulated Drivers", () => {
   it('asks the road service for a whole Sandbox at once: one snap and one set of headings', async () => {
     const before = { snaps: roads.requests.length, headings: roads.headingRequests.length };
 
-    await open(await signUp(app)).expect(200);
+    // An area no other test has used, so nothing is saved for it yet.
+    await open(await signUp(app), { centre: north(20_000) }).expect(200);
 
     expect(roads.requests.length - before.snaps).toBe(1);
     expect(roads.headingRequests.length - before.headings).toBe(1);
     expect(roads.headingRequests.at(-1)).toHaveLength(40);
   });
 
-  it('turns each Driver along its street', async () => {
-    const { body } = await open(await signUp(app)).expect(200);
+  it('turns each parked Driver along its street', async () => {
+    const { body } = await open(await signUp(app), { centre: north(40_000) }).expect(200);
 
-    expect(body.drivers.map((driver: { heading: number }) => driver.heading)).toEqual(Array.from({ length: 40 }, (_, index) => index));
+    // The first Driver may already have set off: its path is the only one asked for here.
+    const parked = body.drivers.slice(1).map((driver: { heading: number }) => driver.heading);
+    expect(parked).toEqual(Array.from({ length: 39 }, (_, index) => index + 1));
   });
 
   it('keeps the same Drivers while the centre stays within 1 km', async () => {

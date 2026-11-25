@@ -1,10 +1,14 @@
 import type { Coordinate } from '@thirrem/types';
-import { RoadService } from './road-service.js';
+import { type RoadRoute, RoadService } from './road-service.js';
 
 interface OsrmResponse {
   code: string;
   destinations?: Array<{ location: [number, number] }>;
-  routes?: Array<{ legs: Array<{ steps: Array<{ maneuver: { bearing_before: number; bearing_after: number } }> }> }>;
+  routes?: Array<{
+    duration: number;
+    geometry?: { coordinates: Array<[number, number]> };
+    legs: Array<{ steps: Array<{ maneuver: { bearing_before: number; bearing_after: number } }> }>;
+  }>;
 }
 
 export class OsrmRoadService extends RoadService {
@@ -26,6 +30,13 @@ export class OsrmRoadService extends RoadService {
     const arrival = legs?.at(-1)?.steps.at(-1);
     if (!legs || !arrival || legs.length !== points.length - 1) throw failure;
     return [...legs.map((leg) => leg.steps[0]!.maneuver.bearing_after), arrival.maneuver.bearing_before];
+  }
+
+  async route(points: Coordinate[]): Promise<RoadRoute> {
+    const { body, failure } = await this.ask('route', points, 'overview=full&geometries=geojson');
+    const best = body.routes?.[0];
+    if (!best?.geometry) throw failure;
+    return { durationS: best.duration, points: best.geometry.coordinates.map(([lon, lat]) => ({ lat, lon })) };
   }
 
   private async ask(service: 'table' | 'route', points: Coordinate[], query: string) {

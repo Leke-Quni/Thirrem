@@ -1,8 +1,11 @@
-import type { Coordinate, SimulatedDriver } from '@thirrem/types';
+import type { Coordinate } from '@thirrem/types';
+import type { Area } from './area.js';
+import type { SandboxDriver } from './sandbox-driver.js';
 
 export interface Sandbox {
   centre: Coordinate;
-  drivers: SimulatedDriver[];
+  area: Area;
+  drivers: SandboxDriver[];
 }
 
 export abstract class SandboxRepository {

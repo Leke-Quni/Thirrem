@@ -8,6 +8,9 @@ const RINGS = [
   { fromM: 4_000, toM: 10_000, drivers: 8, candidates: 70, gapM: 500 },
 ];
 const MAX_ROAD_OFFSET_M = 250;
+const OUTER_M = 10_000;
+const TURN_FROM_M = 500;
+const TURN_TO_M = 2_500;
 const EARTH_RADIUS_M = 6_371_000;
 
 export type Random = () => number;
@@ -32,6 +35,15 @@ function pointAt(from: Coordinate, bearing: number, metres: number): Coordinate 
   const lat2 = Math.asin(Math.sin(lat1) * Math.cos(angle) + Math.cos(lat1) * Math.sin(angle) * Math.cos(bearing));
   const lon2 = radians(from.lon) + Math.atan2(Math.sin(bearing) * Math.sin(angle) * Math.cos(lat1), Math.cos(angle) - Math.sin(lat1) * Math.sin(lat2));
   return { lat: degrees(lat2), lon: ((degrees(lon2) + 540) % 360) - 180 };
+}
+
+/** Where a Driver's path turns back: a short drive away, and never beyond the outer ring. */
+export function turningPoint(centre: Coordinate, from: Coordinate, random: Random): Coordinate {
+  const away = TURN_FROM_M + random() * (TURN_TO_M - TURN_FROM_M);
+  const point = pointAt(from, random() * 2 * Math.PI, away);
+  if (distanceM(centre, point) <= OUTER_M) return point;
+  const share = away / distanceM(from, centre);
+  return { lat: from.lat + (centre.lat - from.lat) * share, lon: from.lon + (centre.lon - from.lon) * share };
 }
 
 export function candidatePoints(centre: Coordinate, random: Random): Candidate[] {
