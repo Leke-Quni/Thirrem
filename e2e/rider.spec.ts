@@ -1457,13 +1457,16 @@ test.describe('Rider Ride Request', () => {
   const economy = cars.filter((car) => car.vehicleType === 'economy');
   const driver = { id: economy[1]!.id, name: 'Arta K.', rating: 4.8, vehicle: { model: 'Škoda Fabia', colour: 'Silver', plate: 'TH-412-KD' } };
 
-  const requestFor = (status: 'searching' | 'matched', ends: { pickup: object; dropoff: object }) => ({
+  const driving = (etaS: number) => ({ status: 'driving', geometry: [[economy[1]!.lon, economy[1]!.lat], [gjakova.lon, gjakova.lat]], etaS });
+
+  const requestFor = (status: 'searching' | 'matched', ends: { pickup: object; dropoff: object }, approach: object = driving(240)) => ({
     id: 'request',
     vehicleType: 'economy',
     ...ends,
     status,
     offers: economy.map((car) => ({ driverId: car.id, status: status === 'searching' ? 'offered' : car.id === driver.id ? 'accepted' : 'withdrawn' })),
     driver: status === 'matched' ? driver : null,
+    approach: status === 'matched' ? approach : null,
   });
   const defaultEnds = { pickup: { lat: 42.3803, lon: 20.4308 }, dropoff: { lat: 42.3712, lon: 20.4219 } };
 
@@ -1495,8 +1498,8 @@ test.describe('Rider Ride Request', () => {
     const { token } = await signup.json();
     await page.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
     await page.goto('/home');
-    const report = (status: 'searching' | 'matched') => {
-      sandbox.request = requestFor(status, sandbox.request!);
+    const report = (status: 'searching' | 'matched', approach?: object) => {
+      sandbox.request = requestFor(status, sandbox.request!, approach);
       connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: sandbox.request } }));
     };
     return { sandbox, connections, report };
@@ -1537,6 +1540,65 @@ test.describe('Rider Ride Request', () => {
     for (const text of ['Arta K.', 'Rated 4.8 out of 5', 'Silver Škoda Fabia', 'TH-412-KD', '€2.02', 'simulated Driver']) await expect(panel).toContainText(text);
     await expect(marked(page, 'matched')).toHaveCount(1);
     await expect(marked(page, 'offered')).toHaveCount(0);
+  });
+
+  test('counts down to the matched Driver arriving, then says they are waiting', async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    const arrival = page.locator('.arrival');
+    await expect(arrival).toHaveText(/Arriving in\s*4 min/);
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched', driving(70));
+    await expect(arrival).toHaveText(/Arriving in\s*1 min/);
+
+    report('matched', { status: 'arrived' });
+    await expect(arrival).toHaveText('Your Driver is waiting at your Pickup Point.');
+    // Drawn over the pin, which would otherwise hide a car waiting right on it.
+    const layer = (selector: string) => page.locator(selector).evaluate((element) => Number(getComputedStyle(element).zIndex));
+    await expect(marked(page, 'arrived')).toHaveCount(1);
+    expect(await layer(".ride-map .driver[data-mark='arrived']")).toBeGreaterThan(await layer('.ride-map .pin-pickup'));
+  });
+
+  test("says while the Driver's route is still being looked for", async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched', { status: 'routing' });
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+  });
+
+  test('lets the Rider ask again when no route to the Pickup Point can be found', async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    let asked = 0;
+    await page.route('**/rider/ride-requests/approach', (r) => {
+      asked += 1;
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await expect.poll(() => connections.length).toBe(1);
+    report('matched', { status: 'unavailable' });
+    await expect(page.getByRole('status').filter({ hasText: 'no route to your Pickup Point' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start a new Sandbox' })).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Find the route again' }).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your Driver', exact: true })).toBeFocused();
+    expect(asked).toBe(1);
+  });
+
+  test('says why the route could not be asked for again', async ({ page }) => {
+    await openPlanner(page, { open: 'matched' });
+    await page.route('**/rider/ride-requests/approach', (r) => r.fulfill({ status: 429, json: { message: 'Too many Ride Requests. Please wait a minute and try again.' } }));
+    // The first message of the Sandbox is the one that decides what the panel shows.
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: requestFor('matched', defaultEnds, { status: 'unavailable' }) } }));
+    await page.reload();
+    const again = page.getByRole('button', { name: 'Find the route again' });
+
+    await again.click();
+
+    await expect(page.getByRole('alert')).toContainText(/too many ride requests/i);
+    await expect(again).toBeEnabled();
   });
 
   test('keeps the pins where they are while the Ride Request is open', async ({ page }) => {
@@ -1610,7 +1672,7 @@ test.describe('Rider Ride Request', () => {
       await openPlanner(page, { open: 'matched' });
 
       const panel = (await page.locator('.planner').boundingBox())!;
-      for (const part of ['.driver-card', '.driver-plate', '.request-summary', '.request-reset .btn']) {
+      for (const part of ['.arrival', '.driver-card', '.driver-plate', '.request-summary', '.request-reset .btn']) {
         const box = (await page.locator(part).boundingBox())!;
         expect(box.x).toBeGreaterThanOrEqual(panel.x);
         expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
@@ -1638,5 +1700,10 @@ test.describe('Rider Ride Request', () => {
 
     await expect(real.getByRole('heading', { name: 'Your Driver', exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(marked(real, 'matched')).toHaveCount(1);
+    // The tests' API has no routing server to reach, so the Rider is offered another try.
+    // It is offered once the API's own retries have failed too.
+    await real.getByRole('button', { name: 'Find the route again' }).click();
+    await expect(real.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+    await expect(real.getByRole('button', { name: 'Find the route again' })).toBeVisible({ timeout: 15_000 });
   });
 });

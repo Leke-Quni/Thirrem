@@ -6,6 +6,7 @@ import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
 import { useStreetName } from '../map/useStreetName';
 import { VEHICLE_TYPE_NAMES } from '../map/VehicleTypeList';
+import { ArrivalStatus } from './ArrivalStatus';
 
 interface RideRequestPanelProps {
   rideRequest: RideRequest;
@@ -13,6 +14,8 @@ interface RideRequestPanelProps {
   dropoff: PlanPoint | null;
   fare: FareState;
   onStartNew(): void;
+  /** The API is looking for the matched Driver's route again. */
+  onRouting(): void;
   /** Set when the Rider has just asked for the Ride, with a button that has now gone. */
   focusTitle: boolean;
 }
@@ -48,8 +51,8 @@ function Point({ label, point }: { label: string; point: PlanPoint | null }) {
   );
 }
 
-export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, focusTitle }: RideRequestPanelProps) {
-  const { driver, offers, vehicleType } = rideRequest;
+export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, onRouting, focusTitle }: RideRequestPanelProps) {
+  const { driver, approach, offers, vehicleType } = rideRequest;
   const type = VEHICLE_TYPE_NAMES[vehicleType];
   const quote = fare.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
   const [confirming, setConfirming] = useState(false);
@@ -73,6 +76,16 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
       <h1 id="ride-request-title" ref={title} tabIndex={-1}>
         {driver ? 'Your Driver' : 'Finding your Driver'}
       </h1>
+      {approach && (
+        <ArrivalStatus
+          approach={approach}
+          onRouting={() => {
+            // The button pressed is about to go, so focus is moved somewhere that stays.
+            title.current?.focus({ preventScroll: true });
+            onRouting();
+          }}
+        />
+      )}
       <div role="status">
         {driver ? (
           <>
@@ -90,7 +103,7 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
           </p>
         )}
       </div>
-      {driver && <p className="request-note">A simulated Driver. Driving to your Pickup Point is not part of the demo yet.</p>}
+      {driver && <p className="request-note">A simulated Driver. Getting picked up is not part of the demo yet.</p>}
 
       <dl className="request-summary">
         <Point label="Pickup Point" point={pickup} />

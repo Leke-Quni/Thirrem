@@ -9,6 +9,7 @@ function fleet({ reducedMotion = false } = {}) {
   const cars: Array<{ pose: Pose; removed: boolean; mark: CarMark | null }> = [];
   let time = 0;
   let frames: Array<() => void> = [];
+  const moves: Array<[string, number]> = [];
   const subject = new DriverFleet({
     createCar: (pose) => {
       const car = { pose, removed: false, mark: null as CarMark | null };
@@ -19,13 +20,14 @@ function fleet({ reducedMotion = false } = {}) {
     cancelFrame: () => (frames = []),
     now: () => time,
     reducedMotion: () => reducedMotion,
+    moved: (id) => moves.push([id, Math.round(metresNorth(subject.poseOf(id)!))]),
   });
   /** Moves time on and draws the frame the fleet asked for. */
   const after = (ms: number) => {
     time += ms;
     for (const draw of frames.splice(0)) draw();
   };
-  return { subject, cars, after, waiting: () => frames.length };
+  return { subject, cars, moves, after, waiting: () => frames.length };
 }
 
 const metresNorth = (pose: Pose) => pose.lat / METRE;
@@ -136,5 +138,22 @@ describe('DriverFleet', () => {
     subject.show([driver('a'), driver('b')], new Map([['b', 'matched']]));
 
     expect(cars.map((car) => car.mark)).toEqual([null, 'matched']);
+  });
+
+  it('says where a car is drawn each time it moves it', () => {
+    const { subject, moves, after } = fleet();
+    subject.show([driver('a'), driver('parked', 50)]);
+
+    subject.show([driver('a', 10), driver('parked', 50)]);
+    after(500);
+    after(500);
+
+    expect(moves).toEqual([['a', 5], ['a', 10]]);
+  });
+
+  it('knows where no car is for a Driver that is not there', () => {
+    const { subject } = fleet();
+
+    expect(subject.poseOf('a')).toBeNull();
   });
 });

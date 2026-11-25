@@ -29,4 +29,10 @@ describe('carMarks', () => {
 
     expect([...marks]).toEqual([['b', 'matched']]);
   });
+
+  it('marks the matched Driver as arrived once waiting at the Pickup Point', () => {
+    const marks = carMarks({ ...rideRequest([{ driverId: 'a', status: 'withdrawn' }, { driverId: 'b', status: 'accepted' }]), approach: { status: 'arrived' } });
+
+    expect([...marks]).toEqual([['b', 'arrived']]);
+  });
 });
