@@ -1602,7 +1602,7 @@ test.describe('Rider Ride Request', () => {
     await expect(again).toBeEnabled();
   });
 
-  const rideOf = (progress: object) => ({ id: 'request-1', vehicleType: 'economy', ...defaultEnds, driver, progress });
+  const rideOf = (progress: object, finalFare: object | null = null) => ({ id: 'request-1', vehicleType: 'economy', ...defaultEnds, driver, progress, finalFare });
 
   test('follows the Ride from pickup to the Drop-off Point', async ({ page }) => {
     const { connections } = await openPlanner(page, { open: 'matched' });
@@ -1640,6 +1640,87 @@ test.describe('Rider Ride Request', () => {
     await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeFocused();
     expect(asked).toBe(1);
   });
+
+  /** A Rider on a Ride, which `complete` has the live feed report complete. */
+  async function onRide(page: Page) {
+    const planner = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => planner.connections.length).toBe(1);
+    const report = (progress: object, finalFare: object | null = null) =>
+      planner.connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: { ...rideOf(progress, finalFare), id: 'request' } } }));
+    report(driving(180));
+    await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeVisible();
+    const complete = () => report({ status: 'arrived' }, { amountCents: 199, currency: 'EUR' });
+    const panel = page.getByRole('region', { name: 'Ride complete' });
+    return { ...planner, complete, panel };
+  }
+
+  test('shows the final Fare once the Ride has completed', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    complete();
+
+    await expect(panel.getByRole('status').filter({ hasText: 'Final Fare' })).toHaveText(/Final Fare\s*€1\.99/);
+    // The Fare quoted beforehand is no longer shown beside it.
+    await expect(panel).not.toContainText('€2.02');
+    for (const text of ['You have arrived at your Drop-off Point.', 'Arta K.', 'TH-412-KD', 'No money was charged.']) await expect(panel).toContainText(text);
+    await expect(panel.getByRole('button', { name: 'Start a new Sandbox' })).toHaveCount(0);
+  });
+
+  test('keeps focus in the panel when completing takes away the focused button', async ({ page }) => {
+    const { complete } = await onRide(page);
+    await page.getByRole('button', { name: 'Start a new Sandbox' }).focus();
+
+    complete();
+
+    await expect(page.getByRole('heading', { name: 'Ride complete' })).toBeFocused();
+  });
+
+  test('lets the Rider make another Ride Request after a completed Ride', async ({ page }) => {
+    const { sandbox, panel, complete } = await onRide(page);
+    complete();
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+    // The API goes on sending the completed Ride until another Ride Request is made.
+    complete();
+
+    await expect(ask(page)).toBeEnabled();
+    await expect(page.getByRole('heading', { name: 'Ride complete' })).toHaveCount(0);
+    await expect(page.locator('.planner h1')).toBeFocused();
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).not.toHaveAccessibleName(/stays put/);
+    await expect(marked(page, 'arrived')).toHaveCount(0);
+    expect(sandbox.fresh).toBe(0);
+
+    await ask(page).click();
+
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeVisible();
+    expect(sandbox.asked).toHaveLength(1);
+  });
+
+  test('shows a completed Ride again after a reload', async ({ page }) => {
+    await openPlanner(page);
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: null, ride: rideOf({ status: 'arrived' }, { amountCents: 199, currency: 'EUR' }) } }));
+
+    await page.reload();
+
+    await expect(page.getByRole('region', { name: 'Ride complete' })).toContainText('€1.99');
+  });
+
+  for (const width of [320, 768]) {
+    test(`keeps the completed Ride inside the panel at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+
+      const { panel, complete } = await onRide(page);
+    complete();
+
+      await expect(panel).toContainText('€1.99');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      const outer = (await panel.boundingBox())!;
+      for (const part of [panel.locator('.final-fare strong'), panel.getByRole('button', { name: 'Request another Ride' })]) {
+        const box = (await part.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(outer.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(outer.x + outer.width);
+      }
+    });
+  }
 
   test('keeps the pins where they are while the Ride Request is open', async ({ page }) => {
     await openPlanner(page);

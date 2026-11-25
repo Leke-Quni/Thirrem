@@ -39,11 +39,11 @@ export function Home() {
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
   const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
-  // A failed Ride Request the Rider has moved on from is not shown again.
+  // A failed Ride Request or a completed Ride that the Rider has moved on from is not shown again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
-  const ride = sandbox.status === 'ready' ? sandbox.ride : null;
-  /** What the Rider is doing, if anything: asking for a Ride, or on one. */
+  const ride = sandbox.status === 'ready' && sandbox.ride?.id !== dismissed ? sandbox.ride : null;
+  /** The Ride or Ride Request on screen, if any. */
   const journey = ride ?? rideRequest;
   const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
   const askedHere = useRef(false);
@@ -95,10 +95,20 @@ export function Home() {
     void findMe(true);
   }, [mapState]);
 
-  const startNewRide = () => {
+  /** Goes back to the planner, which takes focus from the button that was pressed. */
+  const leaveJourney = () => {
     askedHere.current = false;
     droppedRequest.current = true;
+  };
+
+  const startNewRide = () => {
+    leaveJourney();
     startNewSandbox();
+  };
+
+  const backToPlanner = (id: string) => {
+    leaveJourney();
+    setDismissed(id);
   };
 
   if (loading) return <HomeSkeleton />;
@@ -127,7 +137,7 @@ export function Home() {
       </header>
       <main className="ride-layout">
         {ride ? (
-          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} />
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => backToPlanner(ride.id)} />
         ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}
@@ -139,11 +149,7 @@ export function Home() {
             onRouting={routing}
             onStartNew={startNewRide}
             retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
-            onChange={() => {
-              askedHere.current = false;
-              droppedRequest.current = true;
-              setDismissed(rideRequest.id);
-            }}
+            onChange={() => backToPlanner(rideRequest.id)}
           />
         ) : (
           <PlannerPanel
