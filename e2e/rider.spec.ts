@@ -150,7 +150,12 @@ test.describe('Rider accounts', () => {
     test.beforeEach(async ({ page }) => {
       const response = await page.request.post('/rider/auth/signup', { data: { email: newEmail(), password } });
       const { token } = await response.json();
-      await page.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
+      // Only once, or every later page load would log a logged out Rider back in.
+      await page.addInitScript((value) => {
+        if (sessionStorage.getItem('rider-session-seeded')) return;
+        sessionStorage.setItem('rider-session-seeded', 'yes');
+        localStorage.setItem('thirrem-rider-token', value);
+      }, token);
     });
 
     for (const path of ['/signup', '/login']) {
@@ -189,6 +194,9 @@ test.describe('Rider accounts', () => {
       await page.goto('/home');
       await page.getByRole('button', { name: 'Log out' }).click();
       await page.goto('/signup');
+      await expect(page.getByRole('heading', { name: /create your rider account/i })).toBeVisible();
+      // A session left behind would be checked by now, and would send the Rider to the home page.
+      await page.waitForLoadState('networkidle');
       await expect(page).toHaveURL(/\/signup$/);
     });
   });
