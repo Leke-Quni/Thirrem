@@ -38,4 +38,12 @@ export class RiderRideRequestController {
     const account = await this.auth.authenticate('rider', bearerToken(authorization));
     await this.rideRequests.retryRoute(account.id);
   }
+
+  @Post('rides/route')
+  @UseGuards(RideRequestRateLimitGuard)
+  @HttpCode(204)
+  async retryRideRoute(@Headers('authorization') authorization: string | undefined): Promise<void> {
+    const account = await this.auth.authenticate('rider', bearerToken(authorization));
+    await this.rideRequests.retryRideRoute(account.id);
+  }
 }

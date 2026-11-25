@@ -17,6 +17,7 @@ const dropoff = { lat: 42.39, lon: 20.45 };
 const north = (metres: number) => ({ ...pickup, lat: pickup.lat + metres / 111_195 });
 const WINDOW_MS = 9_000;
 const ACCEPT_AFTER_MS = 2_000;
+const BOARDING_MS = 15_000;
 /** When the only Driver there is, parked `awayM` north, accepts: soon after the search has widened far enough to ask. */
 const matchedAfterMs = (awayM: number) => searchAreas(pickup, [north(awayM)]).findIndex((area) => area.length > 0) * WINDOW_MS + ACCEPT_AFTER_MS;
 const ACCEPT_MS = matchedAfterMs(1_000);
@@ -41,7 +42,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
       routing,
       pacer,
       areas: new FixedAreaRepository({ centre: pickup, stations: [station], paths: [] }),
-      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS } } },
+      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS }, boardingMs: BOARDING_MS } },
     });
     apps.push(app);
     const server = app.getHttpServer();
@@ -71,7 +72,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
 
     const { rideRequest } = await after(ACCEPT_MS);
 
-    expect(routing.requests).toEqual([{ from: { lat: station.lat, lon: station.lon }, to: pickup }]);
+    expect(routing.requests[0]).toEqual({ from: { lat: station.lat, lon: station.lon }, to: pickup });
     expect(rideRequest.approach).toEqual({ status: 'driving', geometry: [[station.lon, station.lat], [pickup.lon, pickup.lat]], etaS: 100 });
   });
 
@@ -96,7 +97,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
 
   it.each([
     ['just as it arrives', 100_000],
-    ['long after', 500_000],
+    ['while the Rider gets in', 100_000 + BOARDING_MS - 1],
   ])('waits at the Pickup Point once there: %s', async (_, drivingMs) => {
     const { after } = await requested();
 
@@ -161,7 +162,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
       await pacer.step();
 
       expect((await after(0)).rideRequest.approach).toMatchObject({ status: 'driving', etaS: 100 });
-      expect(server.requests).toHaveLength(2);
+      expect(server.requests).toHaveLength(3);
     });
 
     it('gives up only after trying twice more, 2 and then 5 seconds apart', async () => {
@@ -198,7 +199,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
       await retry();
 
       expect((await after(0)).rideRequest.approach).toMatchObject({ status: 'driving', etaS: 100 });
-      expect(server.requests).toHaveLength(4);
+      expect(server.requests).toHaveLength(5);
       expect(server.requests[3]).toEqual(server.requests[0]);
     });
 
@@ -231,7 +232,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
 
       await retry();
 
-      expect(server.requests).toHaveLength(1);
+      expect(server.requests).toHaveLength(2);
       expect((await after(0)).rideRequest.approach).toMatchObject({ etaS: 60 });
     });
 

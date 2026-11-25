@@ -21,6 +21,8 @@ export interface AppConfig {
     acceptWindowMs: number;
     /** How long after the broadcast a simulated Driver accepts. */
     acceptAfterMs: { min: number; max: number };
+    /** How long a Driver waits at the Pickup Point before the Ride starts. */
+    boardingMs: number;
   };
 }
 
@@ -52,6 +54,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
     sandboxLimit: 30,
-    dispatch: { acceptWindowMs: Number(env.DISPATCH_ACCEPT_WINDOW_MS ?? 9_000), acceptAfterMs: { min: 2_000, max: 8_000 } },
+    dispatch: { acceptWindowMs: Number(env.DISPATCH_ACCEPT_WINDOW_MS ?? 9_000), acceptAfterMs: { min: 2_000, max: 8_000 }, boardingMs: Number(env.DISPATCH_BOARDING_MS ?? 15_000) },
   };
 }

@@ -3,8 +3,8 @@ import { ConflictException, Inject, Injectable, ServiceUnavailableException } fr
 import type { Coordinate, SandboxBusyResponse, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
-import { approachPosition, resumedApproach } from '../dispatch/approach.js';
-import { isOpen, matchedDriverId, rideRequestView } from '../dispatch/ride-request.js';
+import { isPickedUp, matchedDriverPosition, resumedRideRequest, rideView } from '../dispatch/ride.js';
+import { isUnderWay, matchedDriverId, rideRequestView } from '../dispatch/ride-request.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
 import { AreaService } from './area.service.js';
@@ -32,7 +32,7 @@ export class SandboxService extends RiderActivity {
   }
 
   /**
-   * The account's Sandbox around `centre` as it is now. One with an open Ride Request is kept wherever the centre is.
+   * The account's Sandbox around `centre` as it is now. One with an open Ride Request or a Ride is kept wherever the centre is.
    * A `fresh` one replaces any the account has. Changes to one account's Sandbox take turns, so they never place two sets of Drivers.
    */
   async open(accountId: string, centre: Coordinate, fresh = false): Promise<SandboxResponse> {
@@ -94,14 +94,18 @@ export class SandboxService extends RiderActivity {
   private view({ area, drivers, resumedAtMs, rideRequest }: Sandbox, nowMs: number): SandboxResponse {
     const matchedId = rideRequest && matchedDriverId(rideRequest, nowMs);
     const matched = drivers.find((driver) => driver.id === matchedId);
+    const driver = matched ? { id: matched.id, ...matched.profile } : null;
+    // From pickup on, the Rider is told of a Ride in place of the Ride Request.
+    const ride = rideRequest && driver && isPickedUp(rideRequest, resumedAtMs, nowMs) ? rideView(rideRequest, driver, resumedAtMs, nowMs) : null;
     return {
-      drivers: drivers.map((driver) => ({
-        ...driverAt(driver, area, resumedAtMs, nowMs),
-        // The matched Driver has left its path for the Pickup Point.
-        ...(driver === matched && rideRequest?.approach && approachPosition(rideRequest.approach, resumedAtMs, nowMs)),
-        available: driver !== matched,
+      drivers: drivers.map((each) => ({
+        ...driverAt(each, area, resumedAtMs, nowMs),
+        // The matched Driver has left its path for the Rider.
+        ...(each === matched && rideRequest && matchedDriverPosition(rideRequest, resumedAtMs, nowMs)),
+        available: each !== matched,
       })),
-      rideRequest: rideRequest ? rideRequestView(rideRequest, matched ? { id: matched.id, ...matched.profile } : null, resumedAtMs, nowMs) : null,
+      rideRequest: rideRequest && !ride ? rideRequestView(rideRequest, driver, resumedAtMs, nowMs) : null,
+      ride,
     };
   }
 
@@ -121,7 +125,7 @@ export class SandboxService extends RiderActivity {
     const askedAtMs = this.clock.now().getTime();
     const reused =
       existing &&
-      ((existing.rideRequest && isOpen(existing.rideRequest, askedAtMs)) || distanceM(existing.centre, centre) <= SAME_PLACE_M) &&
+      ((existing.rideRequest && isUnderWay(existing.rideRequest, askedAtMs)) || distanceM(existing.centre, centre) <= SAME_PLACE_M) &&
       sandboxStatus(existing.lastActiveMs, askedAtMs) !== 'discarded';
     // Checked before placing too, so that a Rider who will be turned away costs the road service nothing.
     if (!reused && !(await this.sandboxes.hasRoom(accountId, runningCutoffMs(this.clock.now().getTime()), this.config.sandboxLimit))) throw busy();
@@ -144,7 +148,7 @@ export class SandboxService extends RiderActivity {
     const stopped = stoppedAtMs(sandbox.lastActiveMs);
     const drivers = sandbox.drivers.map((driver) => resumedDriver(driver, sandbox.area, sandbox.resumedAtMs, stopped, nowMs));
     const open = sandbox.rideRequest;
-    const rideRequest = open?.approach && { ...open, approach: resumedApproach(open.approach, sandbox.resumedAtMs, stopped, nowMs) };
-    return { ...sandbox, drivers, rideRequest: rideRequest ?? open, lastActiveMs: nowMs, resumedAtMs: nowMs };
+    const rideRequest = open && resumedRideRequest(open, sandbox.resumedAtMs, stopped, nowMs);
+    return { ...sandbox, drivers, rideRequest, lastActiveMs: nowMs, resumedAtMs: nowMs };
   }
 }

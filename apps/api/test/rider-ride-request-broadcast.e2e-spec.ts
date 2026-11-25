@@ -42,7 +42,9 @@ describe('Broadcasting a Ride Request', () => {
   const start = async (placed: Placed[], config: Partial<AppConfig> = {}) => {
     const stations = placed.map(({ east, south = 0, vehicleType = 'economy' }, index) => ({ vehicleType, heading: 0, ...inCell(east, south, 0.2 + index * 0.02) }));
     const clock = new ManualClock(new Date('2026-01-01T00:00:00Z'));
-    const app = await createTestApp({ clock, areas: new FixedAreaRepository({ centre: pickup, stations, paths: [] }), config });
+    // These tests are about the Ride Request, so its Driver never gets as far as picking the Rider up.
+    const dispatch = { ...(config.dispatch ?? loadConfig().dispatch), boardingMs: 86_400_000 };
+    const app = await createTestApp({ clock, areas: new FixedAreaRepository({ centre: pickup, stations, paths: [] }), config: { ...config, dispatch } });
     apps.push(app);
     const server = app.getHttpServer();
     const { body: session } = await request(server).post('/rider/auth/signup').send({ email: `rider-${randomUUID()}@example.com`, password });

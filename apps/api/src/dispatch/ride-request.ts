@@ -1,6 +1,8 @@
 import type { Coordinate, MatchedDriver, RideRequest, RideRequestStatus, SimulatedDriver, VehicleType } from '@thirrem/types';
-import { approachView, type StoredApproach } from './approach.js';
+import type { StoredApproach } from './approach.js';
+import { type DriveRoute, driveProgress } from './drive.js';
 import { searchAreas } from './quadtree.js';
+import { isPickedUp } from './ride.js';
 
 export interface RideRequestInput {
   pickup: Coordinate;
@@ -15,6 +17,12 @@ export interface StoredRideRequest extends RideRequestInput {
   broadcasts: Broadcast[];
   /** That of the Driver due to accept first, if any will. It starts as that Driver is matched. */
   approach?: StoredApproach;
+  /** How long the Driver waits at the Pickup Point while the Rider gets in. */
+  boardingMs: number;
+  /** The road from the Pickup Point to the Drop-off Point. Absent until it is looked for. */
+  rideRoute?: DriveRoute;
+  /** Kept once a Sandbox has stopped after the pickup. Until then it follows from the approach. */
+  pickedUpAtMs?: number;
 }
 
 interface Broadcast {
@@ -27,20 +35,21 @@ interface Broadcast {
 export interface Dispatch {
   acceptWindowMs: number;
   acceptAfterMs: { min: number; max: number };
+  boardingMs: number;
 }
 
 /**
  * A new Ride Request, to be broadcast to the Available Drivers of its Vehicle Type around the Pickup Point, over a wider area each time nobody accepts.
  * Who is in each area is decided now, from where the Drivers are.
  */
-export function broadcast(id: string, input: RideRequestInput, drivers: SimulatedDriver[], { acceptWindowMs, acceptAfterMs: { min, max } }: Dispatch, nowMs: number, random: () => number): StoredRideRequest {
+export function broadcast(id: string, input: RideRequestInput, drivers: SimulatedDriver[], { acceptWindowMs, acceptAfterMs: { min, max }, boardingMs }: Dispatch, nowMs: number, random: () => number): StoredRideRequest {
   const suitable = drivers.filter((driver) => driver.available && driver.vehicleType === input.vehicleType);
   const broadcasts = searchAreas(input.pickup, suitable).map((area, index) => {
     const startsAtMs = nowMs + index * acceptWindowMs;
     const offers = area.map((driver) => ({ driverId: driver.id, acceptsAtMs: startsAtMs + min + random() * (max - min) }));
     return { startsAtMs, endsAtMs: startsAtMs + acceptWindowMs, offers };
   });
-  return { ...input, id, broadcasts };
+  return { ...input, id, broadcasts, boardingMs };
 }
 
 /** The first acceptance made inside its accept window by `nowMs`, if there is one. It follows from the clock, so nothing has to tick. */
@@ -63,8 +72,14 @@ function statusAt(rideRequest: StoredRideRequest, nowMs: number): RideRequestSta
   return nowMs < rideRequest.broadcasts.at(-1)!.endsAtMs ? 'searching' : 'failed';
 }
 
-export function isOpen(rideRequest: StoredRideRequest, nowMs: number): boolean {
+/** Still looking for a Driver or with one: it has not failed, whether or not it has since become a Ride. */
+export function isUnderWay(rideRequest: StoredRideRequest, nowMs: number): boolean {
   return statusAt(rideRequest, nowMs) !== 'failed';
+}
+
+/** A Ride Request is open until the Rider is picked up, or it fails. */
+export function isOpen(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): boolean {
+  return isUnderWay(rideRequest, nowMs) && !isPickedUp(rideRequest, resumedAtMs, nowMs);
 }
 
 /** The Ride Request as the Rider is told of it at `nowMs`. `driver` is the one matched, or null if none is. */
@@ -83,6 +98,6 @@ export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedD
     status,
     offers: [...offered].map((driverId) => ({ driverId, status: driverId === driver?.id ? 'accepted' : unaccepted })),
     driver,
-    approach: driver && approach ? approachView(approach, resumedAtMs, nowMs) : null,
+    approach: driver && approach ? driveProgress(approach.route, approach.matchedAtMs, resumedAtMs, nowMs) : null,
   };
 }
