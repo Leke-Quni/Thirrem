@@ -45,7 +45,9 @@ describe('Simulated Drivers moving along road paths', () => {
     }
   };
   const travelled = (before: SimulatedDriver[], after: SimulatedDriver[]) => after.map((driver, index) => distanceM(before[index]!, driver));
-  const moved = (before: SimulatedDriver[], after: SimulatedDriver[]) => travelled(before, after).filter((metres) => metres > 1).length;
+  // A Driver that has just turned back can be where it was, so facing another way counts as having moved too.
+  const moved = (before: SimulatedDriver[], after: SimulatedDriver[]) =>
+    travelled(before, after).filter((metres, index) => metres > 1 || Math.abs(after[index]!.heading - before[index]!.heading) > 1).length;
 
   it('fetches each path as one loop from where a Driver is parked, out to a turning point and back', async () => {
     const { roads, rider, drivers } = await start(new InstantPacer());
