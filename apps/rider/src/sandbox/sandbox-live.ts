@@ -3,8 +3,10 @@ import type { SandboxLiveCloseCode, SandboxLiveMessage, SimulatedDriver } from '
 const FIRST_WAIT_MS = 1_000;
 const LONGEST_WAIT_MS = 10_000;
 const REOPEN_WAIT_MS = 2_000;
+const STOPPED_RECHECK_MS = 60_000;
 const UNKNOWN_SESSION: SandboxLiveCloseCode = 4401;
 const NO_SANDBOX: SandboxLiveCloseCode = 4404;
+const STOPPED: SandboxLiveCloseCode = 4410;
 
 export interface LiveSocket {
   onopen: (() => void) | null;
@@ -22,6 +24,10 @@ interface Watch {
   onLost(): void;
   /** The feed cannot go on: the server has no Sandbox for this session, or does not accept the session. */
   onGone(): void;
+  /** The Sandbox stopped for lack of activity, and stays so until opened again. */
+  onStopped(): void;
+  /** The stopped Sandbox is no longer there to come back to. */
+  onDiscarded(): void;
 }
 
 // The browser's handlers are typed with their events, which are more than a LiveSocket needs to promise.
@@ -34,11 +40,12 @@ export function liveUrl(apiBaseUrl: string, pageUrl: string): string {
 }
 
 /** Follows the Sandbox's Drivers, reconnecting as needed, until the returned function is called. */
-export function watchDrivers({ token, connect, onDrivers, onLost, onGone }: Watch): () => void {
+export function watchDrivers({ token, connect, onDrivers, onLost, onGone, onStopped, onDiscarded }: Watch): () => void {
   let socket: LiveSocket;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wait = FIRST_WAIT_MS;
   let stopped = false;
+  let timedOut = false;
 
   const open = () => {
     socket = connect();
@@ -46,10 +53,21 @@ export function watchDrivers({ token, connect, onDrivers, onLost, onGone }: Watc
     socket.onmessage = ({ data }) => {
       if (stopped) return;
       wait = FIRST_WAIT_MS;
+      timedOut = false;
       onDrivers((JSON.parse(data) as SandboxLiveMessage).data.drivers);
     };
     socket.onclose = ({ code }) => {
       if (stopped) return;
+      if (timedOut && code === NO_SANDBOX) return onDiscarded();
+      if (code === STOPPED) {
+        timedOut = true;
+        onStopped();
+      }
+      // The feed does not count as activity, so looking again leaves a stopped Sandbox stopped.
+      if (timedOut) {
+        timer = setTimeout(open, STOPPED_RECHECK_MS);
+        return;
+      }
       // Reconnecting would not help with either, so opening the Sandbox again is left to sort it out or explain.
       if (code === UNKNOWN_SESSION || code === NO_SANDBOX) {
         timer = setTimeout(onGone, REOPEN_WAIT_MS);

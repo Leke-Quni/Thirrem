@@ -277,6 +277,15 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .map-status.is-error { color: var(--danger); }
 .map-status .retry { padding: 6px 12px; font-size: 13px; }
 
+/* The backdrop stays light enough to see the stopped cars behind it. */
+.timeout-dialog { box-sizing: border-box; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 26px; overflow: auto; overscroll-behavior: contain; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--fg); box-shadow: var(--shadow), 0 0 80px var(--glow); }
+.timeout-dialog::backdrop { background: rgba(3, 5, 9, 0.55); }
+.timeout-dialog h2 { margin: 0 48px 10px 0; font-family: var(--font-head); font-weight: 600; font-size: 22px; line-height: 1.25; letter-spacing: -0.035em; text-wrap: balance; }
+.timeout-dialog p { margin: 0 0 22px; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.timeout-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.timeout-actions .btn { flex: 1 1 150px; touch-action: manipulation; }
+.timeout-close { position: absolute; top: 16px; right: 16px; }
+
 .place-search { position: relative; }
 .place-input { width: 100%; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--field-bg); color: var(--fg); font-size: 15px; transition: border-color 0.15s; }
 .place-input::placeholder { color: var(--muted); opacity: 0.8; }
