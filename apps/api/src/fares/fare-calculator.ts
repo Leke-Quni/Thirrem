@@ -1,7 +1,6 @@
-import type { FareQuote, VehicleType } from '@thirrem/types';
+import type { FareQuote } from '@thirrem/types';
+import { VEHICLE_TYPES } from '../vehicle-types.js';
 import type { FareRates, VehicleRate } from './fare-rates.js';
-
-const VEHICLE_TYPES: VehicleType[] = ['economy', 'comfort', 'xl', 'electric'];
 
 export interface Trip {
   distanceM: number;
