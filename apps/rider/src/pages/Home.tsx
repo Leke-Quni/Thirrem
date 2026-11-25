@@ -118,7 +118,7 @@ export function Home() {
             dropoff={plan.dropoff}
             geometry={route.status === 'ready' ? route.route.geometry : null}
             focus={focus}
-            drivers={sandbox.status === 'ready' ? sandbox.drivers : NO_DRIVERS}
+            drivers={'drivers' in sandbox ? sandbox.drivers : NO_DRIVERS}
             onPlace={(point) => dispatch({ type: 'place', point })}
             onMove={(slot, point) => dispatch({ type: 'move', slot, point })}
             onReady={() => setMapState('ready')}

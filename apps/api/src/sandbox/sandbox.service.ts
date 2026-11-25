@@ -1,14 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
-import type { Coordinate, SimulatedDriver } from '@thirrem/types';
+import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import type { Coordinate, SandboxBusyResponse, SimulatedDriver } from '@thirrem/types';
+import type { AppConfig } from '../config/app-config.js';
+import { APP_CONFIG } from '../config/app-config.provider.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
 import { AreaService } from './area.service.js';
 import { distanceM } from './driver-placement.js';
 import { RiderActivity } from './rider-activity.js';
 import { driverAt, resumedDriver, sandboxDriver } from './sandbox-driver.js';
-import { discardCutoffMs, sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
+import { discardCutoffMs, runningCutoffMs, sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
 import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
+
+const BUSY: SandboxBusyResponse = { code: 'SANDBOX_LIMIT', message: 'All Sandboxes are busy right now. Please try again in a few minutes.' };
+const busy = () => new ServiceUnavailableException(BUSY);
 
 @Injectable()
 export class SandboxService extends RiderActivity {
@@ -18,6 +23,7 @@ export class SandboxService extends RiderActivity {
     private readonly sandboxes: SandboxRepository,
     private readonly areas: AreaService,
     private readonly clock: SimulationClock,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     super();
   }
@@ -74,10 +80,12 @@ export class SandboxService extends RiderActivity {
     const existing = fresh ? null : await this.sandboxes.findByAccount(accountId);
     const reused =
       existing && distanceM(existing.centre, centre) <= SAME_PLACE_M && sandboxStatus(existing.lastActiveMs, this.clock.now().getTime()) !== 'discarded';
+    // Checked before placing too, so that a Rider who will be turned away costs the road service nothing.
+    if (!reused && !(await this.sandboxes.hasRoom(accountId, runningCutoffMs(this.clock.now().getTime()), this.config.sandboxLimit))) throw busy();
     const area = reused ? existing.area : await this.areas.areaAt(centre);
     const now = this.clock.now().getTime();
     const sandbox = reused ? this.active(existing, now) : this.create(centre, area, now);
-    await this.sandboxes.save(accountId, sandbox);
+    if (!(await this.sandboxes.saveIfRoom(accountId, sandbox, runningCutoffMs(now), this.config.sandboxLimit))) throw busy();
     this.areas.keepFetching(area);
     return sandbox;
   }

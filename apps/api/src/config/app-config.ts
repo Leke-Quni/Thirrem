@@ -14,6 +14,8 @@ export interface AppConfig {
   fareRates: FareRates;
   live: { intervalMs: number; helloTimeoutMs: number };
   sandboxSweepMs: number;
+  /** The most Sandboxes that run at once. */
+  sandboxLimit: number;
 }
 
 const DEV_DATABASE_URL = 'postgres://thirrem:thirrem@localhost:5433/thirrem';
@@ -43,5 +45,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     fareRates: FARE_RATES,
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
+    sandboxLimit: 30,
   };
 }

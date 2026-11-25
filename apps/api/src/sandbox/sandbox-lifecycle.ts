@@ -10,6 +10,9 @@ export const stoppedAtMs = (lastActiveMs: number) => lastActiveMs + STOP_AFTER_M
 /** A Sandbox last active at or before this is to be discarded. */
 export const discardCutoffMs = (nowMs: number) => nowMs - STOP_AFTER_MS - DISCARD_AFTER_MS;
 
+/** A Sandbox last active after this is running. */
+export const runningCutoffMs = (nowMs: number) => nowMs - STOP_AFTER_MS;
+
 export function sandboxStatus(lastActiveMs: number, nowMs: number): SandboxStatus {
   if (lastActiveMs <= discardCutoffMs(nowMs)) return 'discarded';
   return nowMs < stoppedAtMs(lastActiveMs) ? 'running' : 'stopped';

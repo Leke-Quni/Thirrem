@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SandboxBusy } from './SandboxBusy';
 import { SandboxTimeoutDialog } from './SandboxTimeoutDialog';
 import { hasTimedOut, type SandboxState } from './useSandbox';
 
@@ -33,6 +34,7 @@ export function SandboxStatus({ sandbox, onRetry, onStartNew }: SandboxStatusPro
         )}
       </p>
       {timedOut && !dismissed && <SandboxTimeoutDialog discarded={connection === 'discarded'} onContinue={onRetry} onStartNew={onStartNew} onClose={() => setDismissed(true)} />}
+      {sandbox.status === 'busy' && <SandboxBusy retrying={sandbox.retrying} onRetry={onRetry} />}
       {sandbox.status === 'error' && (
         <div className="map-status is-error" role="alert">
           <span>{sandbox.message}</span>
