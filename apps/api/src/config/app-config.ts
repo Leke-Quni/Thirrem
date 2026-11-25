@@ -16,6 +16,12 @@ export interface AppConfig {
   sandboxSweepMs: number;
   /** The most Sandboxes that run at once. */
   sandboxLimit: number;
+  dispatch: {
+    /** How long a broadcast waits for a Driver to accept before the search widens. */
+    acceptWindowMs: number;
+    /** How long after the broadcast a simulated Driver accepts. */
+    acceptAfterMs: { min: number; max: number };
+  };
 }
 
 const DEV_DATABASE_URL = 'postgres://thirrem:thirrem@localhost:5433/thirrem';
@@ -46,5 +52,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
     sandboxLimit: 30,
+    dispatch: { acceptWindowMs: Number(env.DISPATCH_ACCEPT_WINDOW_MS ?? 9_000), acceptAfterMs: { min: 2_000, max: 8_000 } },
   };
 }

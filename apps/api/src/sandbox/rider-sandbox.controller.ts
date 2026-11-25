@@ -19,6 +19,6 @@ export class RiderSandboxController {
   async open(@Headers('authorization') authorization: string | undefined, @Body() body: { centre?: unknown; fresh?: unknown }): Promise<SandboxResponse> {
     const account = await this.auth.authenticate('rider', bearerToken(authorization));
     const centre = parseCoordinate(body?.centre, 'The Sandbox centre');
-    return { drivers: await this.sandboxes.open(account.id, centre, body.fresh === true) };
+    return this.sandboxes.open(account.id, centre, body.fresh === true);
   }
 }

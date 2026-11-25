@@ -1449,3 +1449,350 @@ test.describe('Rider loading shell has the same layout as the loaded page', () =
     });
   }
 });
+
+test.describe('Rider Ride Request', () => {
+  type Page = import('@playwright/test').Page;
+  const gjakova = { lat: 42.3803, lon: 20.4308 };
+  const cars = driversAround(gjakova).slice(0, 8).map((car) => ({ ...car, available: true }));
+  const economy = cars.filter((car) => car.vehicleType === 'economy');
+  const driver = { id: economy[1]!.id, name: 'Arta K.', rating: 4.8, vehicle: { model: 'Škoda Fabia', colour: 'Silver', plate: 'TH-412-KD' } };
+
+  const driving = (etaS: number) => ({ status: 'driving', geometry: [[economy[1]!.lon, economy[1]!.lat], [gjakova.lon, gjakova.lat]], etaS });
+
+  const requestFor = (status: 'searching' | 'matched' | 'failed', ends: { pickup: object; dropoff: object }, approach: object = driving(240)) => ({
+    id: 'request',
+    vehicleType: 'economy',
+    ...ends,
+    status,
+    offers: economy.map((car) => ({ driverId: car.id, status: status === 'searching' ? 'offered' : status === 'matched' && car.id === driver.id ? 'accepted' : 'withdrawn' })),
+    driver: status === 'matched' ? driver : null,
+    approach: status === 'matched' ? approach : null,
+  });
+  const defaultEnds = { pickup: { lat: 42.3803, lon: 20.4308 }, dropoff: { lat: 42.3712, lon: 20.4219 } };
+
+  /** The planner of a signed in Rider whose Sandbox, routes, Fares and live feed the test answers for. */
+  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null } = {}) {
+    await page.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+    });
+    const sandbox = { asked: [] as Array<{ vehicleType: string; pickup: object; dropoff: object }>, fresh: 0, request: open ? requestFor(open, defaultEnds) : (null as ReturnType<typeof requestFor> | null) };
+    const connections: Array<import('@playwright/test').WebSocketRoute> = [];
+    await page.routeWebSocket('**/rider/live', (socket) => void connections.push(socket));
+    await page.route('**/rider/sandbox', (r) => {
+      if (r.request().postDataJSON().fresh) {
+        sandbox.fresh += 1;
+        sandbox.request = null;
+      }
+      return r.fulfill({ json: { drivers: cars, rideRequest: sandbox.request } });
+    });
+    await page.route('**/rider/ride-requests', (r) => {
+      const body = r.request().postDataJSON();
+      sandbox.asked.push(body);
+      // As from the API, each Ride Request made has an id of its own.
+      sandbox.request = { ...requestFor('searching', body), id: `request-${sandbox.asked.length}` };
+      return r.fulfill({ status: 201, json: sandbox.request });
+    });
+    await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street: 'School Road' } }));
+    await page.route('**/rider/route', (r) => r.fulfill({ json: { distanceM: 1850, durationS: 241, geometry: [[20.4308, 42.3803], [20.4219, 42.3712]] } }));
+    await page.route('**/rider/fare', (r) => r.fulfill({ json: { distanceM: 1850, durationS: 241, fares: [{ vehicleType: 'economy', amountCents: 202, currency: 'EUR' }] } }));
+    const signup = await page.request.post('/rider/auth/signup', { data: { email: newEmail(), password } });
+    const { token } = await signup.json();
+    await page.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
+    await page.goto('/home');
+    const report = (status: 'searching' | 'matched' | 'failed', approach?: object) => {
+      sandbox.request = requestFor(status, sandbox.request!, approach);
+      connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: sandbox.request } }));
+    };
+    return { sandbox, connections, report };
+  }
+
+  const placeBothPins = async (page: Page) => {
+    await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+  };
+  const ask = (page: Page) => page.getByRole('button', { name: /^Request / });
+  const marked = (page: Page, mark: string) => page.locator(`.ride-map .driver[data-mark='${mark}']`);
+
+  test('requests the chosen Vehicle Type once both pins are placed, and shows the search on the map', async ({ page }) => {
+    const { sandbox } = await openPlanner(page);
+    await expect(ask(page)).toBeDisabled();
+    await placeBothPins(page);
+
+    await ask(page).click();
+
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeFocused();
+    await expect(page.getByRole('status').filter({ hasText: 'Asked 2 Economy Drivers nearby.' })).toBeVisible();
+    await expect(marked(page, 'offered')).toHaveCount(2);
+    expect(sandbox.asked).toEqual([expect.objectContaining({ vehicleType: 'economy' })]);
+  });
+
+  test("shows the matched Driver's name, vehicle and rating, and marks only their car", async ({ page }) => {
+    const { report, connections } = await openPlanner(page);
+    await placeBothPins(page);
+    await ask(page).click();
+    await expect(marked(page, 'offered')).toHaveCount(2);
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched');
+
+    const panel = page.getByRole('region', { name: 'Your Driver', exact: true });
+    for (const text of ['Arta K.', 'Rated 4.8 out of 5', 'Silver Škoda Fabia', 'TH-412-KD', '€2.02', 'simulated Driver']) await expect(panel).toContainText(text);
+    await expect(marked(page, 'matched')).toHaveCount(1);
+    await expect(marked(page, 'offered')).toHaveCount(0);
+  });
+
+  test('counts down to the matched Driver arriving, then says they are waiting', async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    const arrival = page.locator('.arrival');
+    await expect(arrival).toHaveText(/Arriving in\s*4 min/);
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched', driving(70));
+    await expect(arrival).toHaveText(/Arriving in\s*1 min/);
+
+    report('matched', { status: 'arrived' });
+    await expect(arrival).toHaveText('Your Driver is waiting at your Pickup Point.');
+    // Drawn over the pin, which would otherwise hide a car waiting right on it.
+    const layer = (selector: string) => page.locator(selector).evaluate((element) => Number(getComputedStyle(element).zIndex));
+    await expect(marked(page, 'arrived')).toHaveCount(1);
+    expect(await layer(".ride-map .driver[data-mark='arrived']")).toBeGreaterThan(await layer('.ride-map .pin-pickup'));
+  });
+
+  test("says while the Driver's route is still being looked for", async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched', { status: 'routing' });
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+  });
+
+  test('lets the Rider ask again when no route to the Pickup Point can be found', async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    let asked = 0;
+    await page.route('**/rider/ride-requests/approach', (r) => {
+      asked += 1;
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await expect.poll(() => connections.length).toBe(1);
+    report('matched', { status: 'unavailable' });
+    await expect(page.getByRole('status').filter({ hasText: 'no route to your Pickup Point' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start a new Sandbox' })).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Find the route again' }).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your Driver', exact: true })).toBeFocused();
+    expect(asked).toBe(1);
+  });
+
+  test('says why the route could not be asked for again', async ({ page }) => {
+    await openPlanner(page, { open: 'matched' });
+    await page.route('**/rider/ride-requests/approach', (r) => r.fulfill({ status: 429, json: { message: 'Too many Ride Requests. Please wait a minute and try again.' } }));
+    // The first message of the Sandbox is the one that decides what the panel shows.
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: requestFor('matched', defaultEnds, { status: 'unavailable' }) } }));
+    await page.reload();
+    const again = page.getByRole('button', { name: 'Find the route again' });
+
+    await again.click();
+
+    await expect(page.getByRole('alert')).toContainText(/too many ride requests/i);
+    await expect(again).toBeEnabled();
+  });
+
+  test('keeps the pins where they are while the Ride Request is open', async ({ page }) => {
+    await openPlanner(page);
+    await placeBothPins(page);
+    await ask(page).click();
+    const pickup = page.getByRole('button', { name: /pickup point pin/i });
+    const dropoff = page.getByRole('button', { name: /drop-off point pin/i });
+    await expect(pickup).toHaveAccessibleName(/stays put/);
+    /** How far apart the pins are on screen, which panning or scrolling leaves alone. */
+    const apart = async () => {
+      const [from, to] = [(await pickup.boundingBox())!, (await dropoff.boundingBox())!];
+      return Math.hypot(to.x - from.x, to.y - from.y);
+    };
+    // The map moves to fit the route, so the pins are only measured once it has come to rest.
+    await page.waitForTimeout(1_500);
+    const before = await apart();
+
+    await pickup.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.getByRole('application', { name: /map/i }).click({ position: { x: 60, y: 200 } });
+    await page.waitForTimeout(1_500);
+
+    expect(Math.abs((await apart()) - before)).toBeLessThan(2);
+  });
+
+  for (const status of ['searching', 'matched'] as const) {
+    test(`shows the open Ride Request again after a reload while ${status}, with its pins`, async ({ page }) => {
+      await openPlanner(page, { open: status });
+
+      await expect(page.getByRole('heading', { name: status === 'matched' ? 'Your Driver' : 'Finding your Driver', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole('button', { name: /drop-off point pin/i })).toBeVisible();
+      await expect(page.getByText('School Road')).toHaveCount(2);
+      // Nothing was clicked, so focus is not moved.
+      await expect(page.getByRole('heading', { level: 1 })).not.toBeFocused();
+    });
+
+    test(`starts a new Sandbox while ${status}, after asking first`, async ({ page }) => {
+      const { sandbox } = await openPlanner(page, { open: status });
+      const start = page.getByRole('button', { name: 'Start a new Sandbox' });
+
+      await start.click();
+      await page.getByRole('button', { name: 'Keep this one' }).click();
+      await expect(start).toBeFocused();
+      expect(sandbox.fresh).toBe(0);
+      await start.click();
+      await page.getByRole('button', { name: 'Start new' }).click();
+
+      await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeFocused();
+      await expect(ask(page)).toBeEnabled();
+      await expect(marked(page, status === 'matched' ? 'matched' : 'offered')).toHaveCount(0);
+      expect(sandbox.fresh).toBe(1);
+    });
+  }
+
+  /** A page whose Ride Request has just failed, as told on the live feed. */
+  async function openFailed(page: Page) {
+    const planner = await openPlanner(page);
+    await placeBothPins(page);
+    await ask(page).click();
+    await expect(marked(page, 'offered')).toHaveCount(2);
+    await expect.poll(() => planner.connections.length).toBe(1);
+    planner.report('failed');
+    await expect(page.getByRole('heading', { name: 'Ride Request not accepted' })).toBeVisible();
+    return planner;
+  }
+
+  test('says clearly that the Ride Request was not accepted, and marks no car', async ({ page }) => {
+    await openFailed(page);
+
+    await expect(page.getByRole('status').filter({ hasText: 'The Economy Drivers asked did not take your Ride.' })).toBeVisible();
+    await expect(marked(page, 'offered')).toHaveCount(0);
+    await expect(marked(page, 'matched')).toHaveCount(0);
+  });
+
+  test('says the search goes on while there is no Driver to ask', async ({ page }) => {
+    const { sandbox, connections } = await openPlanner(page);
+    await placeBothPins(page);
+    await ask(page).click();
+    await expect.poll(() => connections.length).toBe(1);
+
+    connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: { ...sandbox.request!, offers: [] } } }));
+
+    await expect(page.getByRole('status').filter({ hasText: 'No Economy Drivers are close by. Still searching…' })).toBeVisible();
+  });
+
+  test('tries the same Ride Request again after it failed', async ({ page }) => {
+    const { sandbox } = await openFailed(page);
+
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeFocused();
+    await expect(marked(page, 'offered')).toHaveCount(2);
+    expect(sandbox.asked).toHaveLength(2);
+    expect(sandbox.asked[1]).toEqual(sandbox.asked[0]);
+  });
+
+  test('goes back to the planner after a failure, with the pins kept and free to move', async ({ page }) => {
+    await openFailed(page);
+
+    await page.getByRole('button', { name: 'Change your Ride' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeFocused();
+    await expect(ask(page)).toBeEnabled();
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).not.toHaveAccessibleName(/stays put/);
+  });
+
+  test('says why trying again did not work, and keeps both ways forward', async ({ page }) => {
+    await openFailed(page);
+    await page.route('**/rider/ride-requests', (r) => r.fulfill({ status: 429, json: { message: 'Too many Ride Requests. Please wait a minute and try again.' } }));
+
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    await expect(page.getByRole('alert')).toContainText(/too many ride requests/i);
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Change your Ride' })).toBeEnabled();
+  });
+
+  test('shows a failed Ride Request again after a reload', async ({ page }) => {
+    await openPlanner(page, { open: 'failed' });
+
+    await expect(page.getByRole('heading', { name: 'Ride Request not accepted' })).toBeVisible();
+    await expect(page.getByText('School Road')).toHaveCount(2);
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  for (const width of [320, 1280]) {
+    test(`keeps the failure actions inside the panel at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openPlanner(page, { open: 'failed' });
+      await expect(page.getByRole('heading', { name: 'Ride Request not accepted' })).toBeVisible();
+
+      const panel = (await page.locator('.planner').boundingBox())!;
+      for (const button of await page.locator('.request-reset .btn').all()) {
+        const box = (await button.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(panel.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
+      }
+    });
+  }
+
+  test('says why a Ride could not be requested and lets the Rider try again', async ({ page }) => {
+    await openPlanner(page);
+    await page.route('**/rider/ride-requests', (r) => r.fulfill({ status: 429, json: { message: 'Too many Ride Requests. Please wait a minute and try again.' } }));
+    await placeBothPins(page);
+
+    await ask(page).click();
+
+    await expect(page.getByRole('alert')).toContainText(/too many ride requests/i);
+    await expect(ask(page)).toBeEnabled();
+  });
+
+  for (const width of [320, 1280]) {
+    test(`keeps the matched Driver inside the panel at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openPlanner(page, { open: 'matched' });
+
+      const panel = (await page.locator('.planner').boundingBox())!;
+      for (const part of ['.arrival', '.driver-card', '.driver-plate', '.request-summary', '.request-reset .btn']) {
+        const box = (await page.locator(part).boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(panel.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
+      }
+    });
+  }
+
+  test('requests a Ride from the real API and is matched to a simulated Driver', async ({ page }) => {
+    // The search can take a minute to reach a Driver who is far off.
+    test.setTimeout(120_000);
+    await page.unrouteAll();
+    const real = await page.context().newPage();
+    await real.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+    });
+    // Routing and street names come from public services, which tests do not call.
+    await real.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street: null } }));
+    await real.route('**/rider/route', (r) => r.fulfill({ json: { distanceM: 1850, durationS: 241, geometry: [[20.4308, 42.3803], [20.4219, 42.3712]] } }));
+    await real.route('**/rider/fare', (r) => r.fulfill({ json: { distanceM: 1850, durationS: 241, fares: [] } }));
+    const signup = await real.request.post('/rider/auth/signup', { data: { email: newEmail(), password } });
+    const { token } = await signup.json();
+    await real.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
+    await real.goto('/home');
+    await placeBothPins(real);
+
+    await ask(real).click();
+
+    await expect(real.getByRole('heading', { name: 'Your Driver', exact: true })).toBeVisible({ timeout: 70_000 });
+    await expect(marked(real, 'matched')).toHaveCount(1);
+    // The tests' API has no routing server to reach, so the Rider is offered another try.
+    // It is offered once the API's own retries have failed too.
+    await real.getByRole('button', { name: 'Find the route again' }).click();
+    await expect(real.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+    await expect(real.getByRole('button', { name: 'Find the route again' })).toBeVisible({ timeout: 15_000 });
+  });
+});

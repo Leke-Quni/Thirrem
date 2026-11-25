@@ -17,7 +17,7 @@ interface Watcher {
 }
 
 /**
- * Sends a Rider the positions of their Sandbox's Drivers for as long as the connection is open.
+ * Sends a Rider their Sandbox's Drivers and Ride Request for as long as the connection is open.
  * Browsers cannot set headers on a WebSocket, and a token in the address would be logged, so it arrives as the first message.
  */
 @WebSocketGateway({ path: '/rider/live', maxPayload: 1_024 })
@@ -67,14 +67,14 @@ export class RiderLiveGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   private async send(client: WebSocket, accountId: string): Promise<boolean> {
-    const drivers = await this.sandboxes.drivers(accountId);
-    if (!drivers || drivers === 'stopped') {
-      this.drop(client, drivers ? 4410 : 4404);
+    const sandbox = await this.sandboxes.watch(accountId);
+    if (!sandbox || sandbox === 'stopped') {
+      this.drop(client, sandbox ? 4410 : 4404);
       return false;
     }
     // A client still receiving the last positions is not sent more to queue up behind them.
     if (client.readyState === client.OPEN && client.bufferedAmount === 0) {
-      const message: SandboxLiveMessage = { event: 'drivers', data: { drivers } };
+      const message: SandboxLiveMessage = { event: 'drivers', data: sandbox };
       client.send(JSON.stringify(message));
     }
     return true;

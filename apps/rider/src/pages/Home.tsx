@@ -1,5 +1,5 @@
 import type { Coordinate, PlaceResult, SimulatedDriver, VehicleType } from '@thirrem/types';
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { Logo } from '../components/Logo';
@@ -7,10 +7,14 @@ import { RouteLoader } from '../components/RouteLoader';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
+import { approachRoute } from '../map/approach-route';
+import { carMarks } from '../map/car-marks';
 import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
 import { useFareQuote } from '../map/useFareQuote';
 import { useRoute } from '../map/useRoute';
+import { RideRequestPanel } from '../ride-request/RideRequestPanel';
+import { useRequestRide } from '../ride-request/useRequestRide';
 import { sandboxCentre } from '../sandbox/sandbox-centre';
 import { SandboxStatus } from '../sandbox/SandboxStatus';
 import { useDeviceLocation } from '../sandbox/useDeviceLocation';
@@ -33,7 +37,26 @@ export function Home() {
   const { state: fare, retry: retryFare } = useFareQuote(plan.pickup, plan.dropoff);
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
-  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
+  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
+  // A failed Ride Request the Rider has moved on from is not shown again.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
+  const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
+  const askedHere = useRef(false);
+  const { pending, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
+    askedHere.current = true;
+    requested(made);
+  });
+  const marks = useMemo(() => carMarks(rideRequest), [rideRequest]);
+  const approach = useMemo(() => approachRoute(rideRequest), [rideRequest]);
+  const droppedRequest = useRef(false);
+
+  // After a reload the pins and Vehicle Type are put back as the shown Ride Request has them, whatever else moved them.
+  useEffect(() => {
+    if (!rideRequest) return;
+    dispatch({ type: 'restore', pickup: rideRequest.pickup, dropoff: rideRequest.dropoff });
+    setVehicleType(rideRequest.vehicleType);
+  }, [rideRequest, plan.pickup, plan.dropoff]);
 
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -93,34 +116,66 @@ export function Home() {
         </div>
       </header>
       <main className="ride-layout">
-        <PlannerPanel
-          plan={plan}
-          route={route}
-          fare={fare}
-          vehicleType={vehicleType}
-          onChooseVehicleType={setVehicleType}
-          onRetryFare={retryFare}
-          mapReady={mapState === 'ready'}
-          locating={locating}
-          locateMessage={locateMessage}
-          onLocate={() => findMe()}
-          onChoosePlace={choosePlace}
-          onSelect={(slot) => dispatch({ type: 'select', slot })}
-          onRemove={(slot) => dispatch({ type: 'remove', slot })}
-          onRetry={() => {
-            retry();
-            retryFare();
-          }}
-        />
+        {rideRequest ? (
+          <RideRequestPanel
+            key={rideRequest.id}
+            rideRequest={rideRequest}
+            pickup={plan.pickup}
+            dropoff={plan.dropoff}
+            fare={fare}
+            focusTitle={askedHere.current}
+            onRouting={routing}
+            onStartNew={() => {
+              askedHere.current = false;
+              droppedRequest.current = true;
+              startNewSandbox();
+            }}
+            retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
+            onChange={() => {
+              askedHere.current = false;
+              droppedRequest.current = true;
+              setDismissed(rideRequest.id);
+            }}
+          />
+        ) : (
+          <PlannerPanel
+            plan={plan}
+            route={route}
+            fare={fare}
+            vehicleType={vehicleType}
+            onChooseVehicleType={setVehicleType}
+            onRetryFare={retryFare}
+            mapReady={mapState === 'ready'}
+            locating={locating}
+            locateMessage={locateMessage}
+            onLocate={() => findMe()}
+            onChoosePlace={choosePlace}
+            onSelect={(slot) => dispatch({ type: 'select', slot })}
+            onRemove={(slot) => dispatch({ type: 'remove', slot })}
+            onRetry={() => {
+              retry();
+              retryFare();
+            }}
+            focusTitle={droppedRequest.current}
+            request={{ ready: sandboxLive, pending, error: requestError, onRequest: request }}
+          />
+        )}
         <div className="map-card">
           <RideMap
             pickup={plan.pickup}
             dropoff={plan.dropoff}
             geometry={route.status === 'ready' ? route.route.geometry : null}
+            approach={approach}
             focus={focus}
             drivers={'drivers' in sandbox ? sandbox.drivers : NO_DRIVERS}
-            onPlace={(point) => dispatch({ type: 'place', point })}
-            onMove={(slot, point) => dispatch({ type: 'move', slot, point })}
+            marks={marks}
+            locked={rideRequest !== null}
+            onPlace={(point) => {
+              if (!rideRequest) dispatch({ type: 'place', point });
+            }}
+            onMove={(slot, point) => {
+              if (!rideRequest) dispatch({ type: 'move', slot, point });
+            }}
             onReady={() => setMapState('ready')}
             onFailure={() => setMapState('failed')}
           />

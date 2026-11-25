@@ -80,7 +80,7 @@ describe("The live feed of a Rider's simulated Drivers", () => {
     await feed.next(1);
 
     expect(ids(feed.received[0]!)).toEqual(ids(drivers));
-    expect(Object.keys(feed.received[0]![0]!).sort()).toEqual(['heading', 'id', 'lat', 'lon', 'vehicleType']);
+    expect(Object.keys(feed.received[0]![0]!).sort()).toEqual(['available', 'heading', 'id', 'lat', 'lon', 'vehicleType']);
   });
 
   it('keeps sending positions as the simulation clock moves, with no new request', async () => {

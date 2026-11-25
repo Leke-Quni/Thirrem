@@ -1,4 +1,4 @@
-import type { Coordinate, SimulatedDriver } from '@thirrem/types';
+import type { Coordinate, RideRequest, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE_URL } from '../api-base-url';
 import { TOKEN_KEY } from '../auth/AuthProvider';
@@ -8,15 +8,21 @@ import { browserSocket, liveUrl, watchDrivers } from './sandbox-live';
 
 export type SandboxState =
   | { status: 'loading' }
-  | { status: 'ready'; drivers: SimulatedDriver[]; connection: 'live' | 'reconnecting' | 'stopped' | 'discarded' | 'resuming' }
+  | { status: 'ready'; drivers: SimulatedDriver[]; rideRequest: RideRequest | null; connection: 'live' | 'reconnecting' | 'stopped' | 'discarded' | 'resuming' }
   // `drivers` are those of a stopped Sandbox that could not be continued yet.
   | { status: 'busy'; drivers: SimulatedDriver[]; retrying: boolean }
   | { status: 'error'; message: string };
 
+const running = ({ drivers, rideRequest }: SandboxResponse): SandboxState => ({ status: 'ready', drivers, rideRequest, connection: 'live' });
+
 export const hasTimedOut = (state: SandboxState) => state.status === 'ready' && (state.connection === 'stopped' || state.connection === 'discarded');
 
 /** The Rider's Sandbox around `centre`. A timed out or refused one is opened when asked to, or when a pin changes. */
-export function useSandbox(centre: Coordinate | null, pickup: Coordinate | null, dropoff: Coordinate | null): { state: SandboxState; retry(): void; startNew(): void } {
+export function useSandbox(
+  centre: Coordinate | null,
+  pickup: Coordinate | null,
+  dropoff: Coordinate | null,
+): { state: SandboxState; retry(): void; startNew(): void; requested(rideRequest: RideRequest): void; routing(): void } {
   const [placedAt, setPlacedAt] = useState<Coordinate | null>(null);
   const [state, setState] = useState<SandboxState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -34,20 +40,24 @@ export function useSandbox(centre: Coordinate | null, pickup: Coordinate | null,
     setState((current) => {
       // The busy message stays up while trying again, so its button keeps focus.
       if (current.status === 'busy') return { ...current, retrying: true };
-      if (!wantsNew.current && current.status === 'ready' && current.connection === 'stopped') return { ...current, connection: 'resuming' };
+      if (!wantsNew.current && current.status === 'ready') {
+        if (current.connection === 'stopped') return { ...current, connection: 'resuming' };
+        // An open Ride Request keeps the Sandbox wherever its centre moves, so it stays on screen.
+        if (current.rideRequest && current.rideRequest.status !== 'failed') return current;
+      }
       return { status: 'loading' };
     });
     const connected = (connection: 'reconnecting' | 'stopped' | 'discarded') => setState((current) => (current.status === 'ready' ? { ...current, connection } : current));
     let stopWatching: (() => void) | undefined;
     openSandbox(placedAt, wantsNew.current, controller.signal)
-      .then(({ drivers }) => {
+      .then((sandbox) => {
         if (controller.signal.aborted) return;
         wantsNew.current = false;
-        setState({ status: 'ready', drivers, connection: 'live' });
+        setState(running(sandbox));
         stopWatching = watchDrivers({
           token: localStorage.getItem(TOKEN_KEY) ?? '',
           connect: () => browserSocket(liveUrl(API_BASE_URL, window.location.href)),
-          onDrivers: (live) => setState({ status: 'ready', drivers: live, connection: 'live' }),
+          onSandbox: (live) => setState(running(live)),
           onLost: () => connected('reconnecting'),
           onGone: () => setAttempt((n) => n + 1),
           onStopped: () => connected('stopped'),
@@ -76,11 +86,20 @@ export function useSandbox(centre: Coordinate | null, pickup: Coordinate | null,
     retry();
   }, [retry]);
 
+  /** Shows a Ride Request just made, without waiting for the live feed to report it. */
+  const requested = useCallback((rideRequest: RideRequest) => setState((current) => (current.status === 'ready' ? { ...current, rideRequest } : current)), []);
+
+  /** Shows that the matched Driver's route is being looked for again, ahead of the live feed. */
+  const routing = useCallback(
+    () => setState((current) => (current.status === 'ready' && current.rideRequest ? { ...current, rideRequest: { ...current.rideRequest, approach: { status: 'routing' } } } : current)),
+    [],
+  );
+
   // A pin change is the Rider coming back, so it opens a Sandbox that is not running.
   const notRunning = useRef(false);
   notRunning.current = hasTimedOut(state) || state.status === 'busy';
   useEffect(() => {
     if (notRunning.current) retry();
   }, [pickup, dropoff, retry]);
-  return { state, retry, startNew };
+  return { state, retry, startNew, requested, routing };
 }

@@ -17,6 +17,11 @@ export function driverCar(map: maplibregl.Map, { lat, lon, heading }: Pose): Car
   const marker = new maplibregl.Marker({ element: driverElement(), rotation: heading, rotationAlignment: 'map', subpixelPositioning: true }).setLngLat([lon, lat]).addTo(map);
   return {
     moveTo: (pose) => marker.setLngLat([pose.lon, pose.lat]).setRotation(pose.heading),
+    mark: (mark) => {
+      const { dataset } = marker.getElement();
+      if (mark) dataset.mark = mark;
+      else delete dataset.mark;
+    },
     remove: () => marker.remove(),
   };
 }

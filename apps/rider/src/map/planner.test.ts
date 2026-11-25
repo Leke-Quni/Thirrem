@@ -84,5 +84,27 @@ describe('planReducer', () => {
 
     expect(plan.active).toBe('pickup');
   });
-});
 
+  describe('restoring the pins of an open Ride Request', () => {
+    it('places both pins where the Ride Request has them', () => {
+      const plan = planReducer(initialPlan, { type: 'restore', pickup: a, dropoff: b });
+
+      expect(plan).toMatchObject({ pickup: a, dropoff: b });
+    });
+
+    it('keeps the name of a pin that is already in the right place', () => {
+      const placed = { pickup: { ...a, label: 'School Road' }, dropoff: c, active: 'dropoff' as const };
+
+      const plan = planReducer(placed, { type: 'restore', pickup: a, dropoff: b });
+
+      expect(plan.pickup).toEqual({ ...a, label: 'School Road' });
+      expect(plan.dropoff).toEqual(b);
+    });
+
+    it('changes nothing when both pins already match', () => {
+      const placed = { pickup: a, dropoff: b, active: 'dropoff' as const };
+
+      expect(planReducer(placed, { type: 'restore', pickup: { ...a }, dropoff: { ...b } })).toBe(placed);
+    });
+  });
+});

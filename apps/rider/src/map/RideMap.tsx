@@ -4,7 +4,8 @@ import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
-import { DriverFleet } from './driver-fleet';
+import { type ApproachRoute, lineFromCar } from './approach-route';
+import { type CarMark, DriverFleet } from './driver-fleet';
 import { driverCar } from './driver-marker';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
 import type { PinSlot, PlanPoint } from './planner';
@@ -13,7 +14,12 @@ interface RideMapProps {
   pickup: PlanPoint | null;
   dropoff: PlanPoint | null;
   geometry: Array<[number, number]> | null;
+  /** Drawn instead of `geometry` while the matched Driver is on the way. */
+  approach: ApproachRoute | null;
   drivers: SimulatedDriver[];
+  marks: ReadonlyMap<string, CarMark>;
+  /** The pins cannot be moved while a Ride Request is open. */
+  locked: boolean;
   focus: { point: Coordinate; nonce: number } | null;
   onPlace(point: Coordinate): void;
   onMove(slot: PinSlot, point: Coordinate): void;
@@ -48,26 +54,29 @@ function dropoffShape(): SVGSVGElement {
   return svg;
 }
 
+const pinLabel = (slot: PinSlot, locked: boolean) =>
+  locked ? `${PIN_LABEL[slot]} pin. It stays put while your Ride Request is open.` : `${PIN_LABEL[slot]} pin. Drag it, or use the arrow keys to move it.`;
+
 function pinElement(slot: PinSlot): HTMLButtonElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = `pin pin-${slot}`;
   if (slot === 'dropoff') el.append(dropoffShape());
-  el.setAttribute('aria-label', `${PIN_LABEL[slot]} pin. Drag it, or use the arrow keys to move it.`);
   return el;
 }
 
-export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, onMove, onReady, onFailure }: RideMapProps) {
+export function RideMap({ pickup, dropoff, geometry, approach, drivers, marks, locked, focus, onPlace, onMove, onReady, onFailure }: RideMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<Partial<Record<PinSlot, maplibregl.Marker>>>({});
   const fleet = useRef<DriverFleet | null>(null);
-  const latest = useRef({ onPlace, onMove, onReady, onFailure, geometry });
-  latest.current = { onPlace, onMove, onReady, onFailure, geometry };
+  const latest = useRef({ onPlace, onMove, onReady, onFailure, geometry, approach });
+  latest.current = { onPlace, onMove, onReady, onFailure, geometry, approach };
 
   const drawRoute = () => {
     const source = map.current?.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined;
-    const line = latest.current.geometry;
+    const { approach: toPickup, geometry: trip } = latest.current;
+    const line = toPickup ? lineFromCar(toPickup.ahead, fleet.current?.poseOf(toPickup.driverId) ?? null) : trip;
     source?.setData({
       type: 'FeatureCollection',
       features: line ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: line } }] : [],
@@ -90,6 +99,9 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
       cancelFrame: (frame) => cancelAnimationFrame(frame),
       now: () => performance.now(),
       reducedMotion: () => lessMotion.matches,
+      moved: (id) => {
+        if (id === latest.current.approach?.driverId) drawRoute();
+      },
     });
     instance.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -135,11 +147,13 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
         return;
       }
       if (existing) {
-        existing.setLngLat([point.lon, point.lat]);
+        existing.setLngLat([point.lon, point.lat]).setDraggable(!locked);
+        existing.getElement().setAttribute('aria-label', pinLabel(slot, locked));
         return;
       }
       const el = pinElement(slot);
-      const marker = new maplibregl.Marker({ element: el, draggable: true, anchor: slot === 'dropoff' ? 'bottom' : 'center' }).setLngLat([point.lon, point.lat]).addTo(instance);
+      el.setAttribute('aria-label', pinLabel(slot, locked));
+      const marker = new maplibregl.Marker({ element: el, draggable: !locked, anchor: slot === 'dropoff' ? 'bottom' : 'center' }).setLngLat([point.lon, point.lat]).addTo(instance);
       marker.on('dragend', () => {
         const { lat, lng } = marker.getLngLat();
         latest.current.onMove(slot, { lat, lon: lng });
@@ -154,20 +168,23 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
       });
       markers.current[slot] = marker;
     });
-  }, [pickup, dropoff]);
+  }, [pickup, dropoff, locked]);
 
   useEffect(() => {
-    fleet.current?.show(drivers);
-  }, [drivers]);
+    fleet.current?.show(drivers, marks);
+  }, [drivers, marks]);
 
+  useEffect(drawRoute, [geometry, approach]);
+
+  // The camera is fitted as a route appears, and then left alone while the approach shrinks.
   useEffect(() => {
-    drawRoute();
     const instance = map.current;
-    if (!instance || !geometry || geometry.length < 2) return;
-    const bounds = geometry.reduce((box, point) => box.extend(point), new maplibregl.LngLatBounds(geometry[0], geometry[0]));
+    const line = approach?.ahead ?? geometry;
+    if (!instance || !line || line.length < 2) return;
+    const bounds = line.reduce((box, point) => box.extend(point), new maplibregl.LngLatBounds(line[0], line[0]));
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     instance.fitBounds(bounds, { padding: 60, duration: reduceMotion ? 0 : 600, maxZoom: 17 });
-  }, [geometry]);
+  }, [geometry, approach?.driverId]);
 
   useEffect(() => {
     if (!focus) return;

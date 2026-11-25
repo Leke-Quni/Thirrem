@@ -10,8 +10,12 @@ const METRES_PER_DEGREE = 111_195;
 
 export type Pose = Pick<SimulatedDriver, 'lat' | 'lon' | 'heading'>;
 
+/** How a car stands in the Rider's open Ride Request. */
+export type CarMark = 'offered' | 'matched' | 'arrived';
+
 export interface Car {
   moveTo(pose: Pose): void;
+  mark(mark: CarMark | null): void;
   remove(): void;
 }
 
@@ -21,9 +25,12 @@ interface FleetDependencies {
   cancelFrame(frame: number): void;
   now(): number;
   reducedMotion(): boolean;
+  /** Told after a car has been moved. */
+  moved(id: string): void;
 }
 
 interface Tracked {
+  id: string;
   car: Car;
   shown: Pose;
   target: Pose;
@@ -49,20 +56,26 @@ export class DriverFleet {
 
   constructor(private readonly deps: FleetDependencies) {}
 
-  show(drivers: SimulatedDriver[]): void {
+  show(drivers: SimulatedDriver[], marks: ReadonlyMap<string, CarMark> = new Map()): void {
     const gone = new Set(this.cars.keys());
     for (const { id, lat, lon, heading } of drivers) {
       gone.delete(id);
       const target = { lat, lon, heading };
       const tracked = this.cars.get(id);
-      if (!tracked) this.cars.set(id, { car: this.deps.createCar(target), shown: target, target, glide: null });
+      if (!tracked) this.cars.set(id, { id, car: this.deps.createCar(target), shown: target, target, glide: null });
       else this.send(tracked, target);
+      this.cars.get(id)!.car.mark(marks.get(id) ?? null);
     }
     for (const id of gone) {
       this.cars.get(id)!.car.remove();
       this.cars.delete(id);
     }
     this.schedule();
+  }
+
+  /** Where the Driver's car is drawn now, which may still be on the way to where it was last reported. */
+  poseOf(id: string): Pose | null {
+    return this.cars.get(id)?.shown ?? null;
   }
 
   clear(): void {
@@ -84,6 +97,7 @@ export class DriverFleet {
   private move(tracked: Tracked, pose: Pose): void {
     tracked.shown = pose;
     tracked.car.moveTo(pose);
+    this.deps.moved(tracked.id);
   }
 
   private schedule(): void {

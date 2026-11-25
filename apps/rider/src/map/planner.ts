@@ -18,7 +18,10 @@ export type PlanAction =
   | { type: 'choose'; slot: PinSlot; point: PlanPoint }
   | { type: 'move'; slot: PinSlot; point: Coordinate }
   | { type: 'select'; slot: PinSlot }
-  | { type: 'remove'; slot: PinSlot };
+  | { type: 'remove'; slot: PinSlot }
+  | { type: 'restore'; pickup: Coordinate; dropoff: Coordinate };
+
+const samePoint = (a: Coordinate | null, b: Coordinate) => a !== null && a.lat === b.lat && a.lon === b.lon;
 
 export const initialPlan: Plan = { pickup: null, dropoff: null, active: 'pickup' };
 
@@ -40,5 +43,13 @@ export function planReducer(plan: Plan, action: PlanAction): Plan {
       return { ...plan, active: action.slot };
     case 'remove':
       return { ...plan, [action.slot]: null, active: action.slot };
+    case 'restore': {
+      if (samePoint(plan.pickup, action.pickup) && samePoint(plan.dropoff, action.dropoff)) return plan;
+      return {
+        ...plan,
+        pickup: samePoint(plan.pickup, action.pickup) ? plan.pickup : action.pickup,
+        dropoff: samePoint(plan.dropoff, action.dropoff) ? plan.dropoff : action.dropoff,
+      };
+    }
   }
 }
