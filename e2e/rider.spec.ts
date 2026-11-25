@@ -442,6 +442,29 @@ test.describe('Rider ride planner', () => {
     });
   }
 
+  test('leaves room to spare for the pin labels on a narrow phone, so wider fonts do not wrap them', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await placeBothPins(page);
+    await expect(page.getByRole('button', { name: 'Remove the Pickup Point' })).toBeVisible();
+
+    const spare = await page.locator('.pin-row-main').evaluateAll((rows) =>
+      Math.min(
+        ...rows.map((row) => {
+          const style = getComputedStyle(row);
+          const glyph = row.firstElementChild!.getBoundingClientRect().width;
+          const room = row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - parseFloat(style.columnGap) - glyph;
+          const label = document.createRange();
+          label.selectNodeContents(row.querySelector('strong')!);
+          return room - label.getBoundingClientRect().width;
+        }),
+      ),
+    );
+
+    expect(spare).toBeGreaterThanOrEqual(8);
+  });
+
   for (const width of [320, 360, 390, 1280]) {
     test(`keeps every Vehicle Type name and a long Fare inside its option at ${width} px wide`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });

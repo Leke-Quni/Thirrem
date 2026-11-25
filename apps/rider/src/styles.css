@@ -255,7 +255,7 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .pin-row-main:disabled { cursor: progress; opacity: 0.7; }
 .pin-slot.is-active .pin-row-main { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .pin-row-text { display: grid; min-width: 0; }
-.pin-row-text strong { font-size: 14px; font-weight: 600; }
+.pin-row-text strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pin-row-text span { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pin-remove, .pin-locate { width: 44px; height: auto; flex: none; }
 
@@ -307,7 +307,10 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .fare-none { color: var(--muted); }
 .fare-pending { width: 56px; height: 18px; margin: 4px 0; border-radius: 6px; background: linear-gradient(90deg, var(--field-bg), var(--raised), var(--field-bg)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
 .fare-error { margin-top: 12px; }
-@media (max-width: 359px) { .vehicle-types { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 359px) {
+  .vehicle-types { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pin-row-main { gap: 8px; padding-inline: 8px; }
+}
 
 .map-crosshair { display: none; position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 1; }
 .map-crosshair::before, .map-crosshair::after { content: ''; position: absolute; background: var(--fg); box-shadow: 0 0 0 1px var(--bg); }
