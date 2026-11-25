@@ -8,7 +8,7 @@ The completed Ride stays in the Sandbox until another Ride Request takes its pla
 
 ## Consequences
 
-- A Driver who has dropped a Rider off stays parked for the life of the Sandbox.
+- A Driver who has dropped a Rider off stays parked until matched again. Unlike one released by a cancel (ADR 0012), it is not given a new path to drive; if it is matched and then cancelled on, it is.
 - The completed Ride is the only record of the Fare. Payment and receipts (#14) will have to store it.
 - The Rider app only remembers until a reload that the Rider has moved on, so a reload shows the completed Ride again.
 - A Ride with no route to the Drop-off Point never completes.

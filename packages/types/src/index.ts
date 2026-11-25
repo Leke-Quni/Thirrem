@@ -72,6 +72,10 @@ export interface SandboxResponse {
   rideRequest: RideRequest | null;
   /** The Rider's Ride, from pickup on. The Ride Request it came from is then no longer sent. */
   ride: Ride | null;
+  /** The seconds until the Rider can request a Ride again after cancelling too often, or null if they can now. */
+  requestsPausedForS: number | null;
+  /** When a cancel last left the Rider one more of its kind from a pause, for the app to warn them as it changes. Null if none has. */
+  cancelWarningAtMs: number | null;
 }
 
 /** Failed once every accept window has passed with no Driver accepting. It is then closed. */
@@ -95,6 +99,29 @@ export interface RideRequest {
   driver: MatchedDriver | null;
   /** The matched Driver's drive to the Pickup Point, or null while searching. */
   approach: DriveProgress | null;
+  /** What cancelling it now would mean, or null once it has failed. `DELETE /rider/ride-requests` cancels it, with `?pause=accepted` if the Rider has agreed to be paused. */
+  cancellation: Cancellation | null;
+}
+
+export interface Cancellation {
+  /** Which limit it would count toward: quick within 30 seconds of the match, late after. Null when it would not count. */
+  counts: 'quick' | 'late' | null;
+  /** The seconds until a quick cancel would be a late one. */
+  quickForS: number | null;
+  /** Whether it would pause Ride Requests for 15 minutes. */
+  pausesRequests: boolean;
+}
+
+/** The 409 answer to a cancel that would pause Ride Requests and was sent without `?pause=accepted`. */
+export interface CancelWouldPauseResponse {
+  code: 'CANCEL_WOULD_PAUSE';
+  message: string;
+}
+
+/** The 429 answer to requesting a Ride while paused for cancelling too often. */
+export interface RideRequestsPausedResponse {
+  code: 'RIDE_REQUESTS_PAUSED';
+  message: string;
 }
 
 /** The journey from pickup to drop-off. */

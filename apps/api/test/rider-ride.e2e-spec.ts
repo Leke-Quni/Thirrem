@@ -62,12 +62,16 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
       const sandbox = await open();
       return { ...sandbox, driver: sandbox.drivers[0]! };
     };
+    const cancel = async () => {
+      await request(server).delete('/rider/ride-requests').set('Authorization', authorization).expect(204);
+      await searched();
+    };
     const retry = async (path: 'ride-requests/approach' | 'rides/route', status = 204) => {
       const res = await request(server).post(`/rider/${path}`).set('Authorization', authorization).expect(status);
       await searched();
       return res;
     };
-    return { server, clock, routing, dropoff, open, after, ask, retry };
+    return { server, clock, routing, dropoff, open, after, ask, retry, cancel };
   };
 
   const etaOf = (ride: Ride | null) => (ride?.progress.status === 'driving' ? ride.progress.etaS : undefined);
@@ -202,6 +206,20 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
 
       expect(moved.ride).toBeNull();
       expect(moved.drivers[0]!.id).not.toBe(driver.id);
+    });
+
+    it('releases the same Driver where a cancel finds it, not back where the last Ride ended', async () => {
+      const { after, ask, cancel } = await requested();
+      await after(PICKUP_MS + RIDE_MS);
+      await ask(201);
+      await searched();
+      const { driver } = await after(matchedAfterMs(-2_000) + 50_000);
+
+      await cancel();
+
+      const released = await after(0);
+      expect(released.driver.available).toBe(true);
+      expect(distanceM(released.driver, driver)).toBeLessThan(0.01);
     });
 
     it('matches the same Driver again, who sets off from where the last Ride ended', async () => {

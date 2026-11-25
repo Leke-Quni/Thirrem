@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Headers, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Headers, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
 import type { RideRequest, VehicleType } from '@thirrem/types';
 import { AuthService } from '../auth/auth.service.js';
 import { parseCoordinate } from '../routing/requested-route.js';
@@ -29,6 +29,14 @@ export class RiderRideRequestController {
       dropoff: parseCoordinate(body?.dropoff, 'The Drop-off Point'),
       vehicleType: parseVehicleType(body?.vehicleType),
     });
+  }
+
+  @Delete('ride-requests')
+  @UseGuards(RideRequestRateLimitGuard)
+  @HttpCode(204)
+  async cancel(@Headers('authorization') authorization: string | undefined, @Query('pause') pause: unknown): Promise<void> {
+    const account = await this.auth.authenticate('rider', bearerToken(authorization));
+    await this.rideRequests.cancel(account.id, pause === 'accepted');
   }
 
   @Post('ride-requests/approach')
