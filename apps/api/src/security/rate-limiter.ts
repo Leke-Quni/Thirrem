@@ -90,3 +90,12 @@ export class SearchRateLimitGuard extends RateLimitGuard {
     super(clock, options);
   }
 }
+
+@Injectable()
+export class RideRequestRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many Ride Requests. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(ROUTE_RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
+  }
+}

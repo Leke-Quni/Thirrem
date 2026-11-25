@@ -1,5 +1,6 @@
 import type { SimulatedDriver } from '@thirrem/types';
 import type { Area } from './area.js';
+import { type DriverProfile, driverProfile } from './driver-profile.js';
 import type { RoadPath } from './road-path.js';
 
 type Random = () => number;
@@ -10,6 +11,7 @@ const PACE_RANGE = 0.3;
 export interface SandboxDriver {
   id: string;
   station: number;
+  profile: DriverProfile;
   /** This Driver's share of the path's average speed, so that Drivers on one path drift apart. */
   pace: number;
   /** Set when a path was ready as the Sandbox opened, or when it resumed: the Driver starts part of the way round it. */
@@ -20,7 +22,8 @@ export function sandboxDriver(id: string, station: number, area: Area, nowMs: nu
   const ready = area.paths.flatMap((path) => (path.station === station && path.ready ? [path.ready.path] : []));
   const path = ready[Math.floor(random() * ready.length)];
   const joined = path ? { path, startM: random() * path.lengthM, atMs: nowMs } : null;
-  return { id, station, pace: SLOWEST_PACE + random() * PACE_RANGE, joined };
+  const profile = driverProfile(area.stations[station]!.vehicleType, random);
+  return { id, station, profile, pace: SLOWEST_PACE + random() * PACE_RANGE, joined };
 }
 
 type Drive = NonNullable<SandboxDriver['joined']>;
@@ -37,7 +40,7 @@ function driveOf({ station, joined }: SandboxDriver, area: Area, resumedAtMs: nu
 const metresAlong = ({ path, startM, atMs }: Drive, pace: number, nowMs: number) => startM + (Math.max(0, nowMs - atMs) / 1_000) * path.speedMps * pace;
 
 /** The Driver as it is at `nowMs`: driving its path, or parked while it has none. */
-export function driverAt(driver: SandboxDriver, area: Area, resumedAtMs: number, nowMs: number): SimulatedDriver {
+export function driverAt(driver: SandboxDriver, area: Area, resumedAtMs: number, nowMs: number): Omit<SimulatedDriver, 'available'> {
   const parked = area.stations[driver.station]!;
   const drive = driveOf(driver, area, resumedAtMs);
   if (!drive) return { id: driver.id, ...parked };

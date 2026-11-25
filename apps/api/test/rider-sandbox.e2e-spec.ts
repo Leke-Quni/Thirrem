@@ -39,7 +39,7 @@ describe("The Rider's Sandbox and its simulated Drivers", () => {
     for (const type of ['economy', 'comfort', 'xl', 'electric']) {
       expect(body.drivers.filter((driver: { vehicleType: string }) => driver.vehicleType === type)).toHaveLength(10);
     }
-    expect(Object.keys(body.drivers[0]).sort()).toEqual(['heading', 'id', 'lat', 'lon', 'vehicleType']);
+    expect(Object.keys(body.drivers[0]).sort()).toEqual(['available', 'heading', 'id', 'lat', 'lon', 'vehicleType']);
   });
 
   it('asks the road service for a whole Sandbox at once: one snap and one set of headings', async () => {

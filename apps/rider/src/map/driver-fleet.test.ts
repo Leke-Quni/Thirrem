@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DriverFleet, type Pose } from './driver-fleet';
 
 const METRE = 1 / 111_195;
-const driver = (id: string, northM = 0, heading = 0): SimulatedDriver => ({ id, vehicleType: 'economy', heading, lat: northM * METRE, lon: 0 });
+const driver = (id: string, northM = 0, heading = 0): SimulatedDriver => ({ id, vehicleType: 'economy', heading, lat: northM * METRE, lon: 0, available: true });
 
 function fleet({ reducedMotion = false } = {}) {
   const cars: Array<{ pose: Pose; removed: boolean }> = [];

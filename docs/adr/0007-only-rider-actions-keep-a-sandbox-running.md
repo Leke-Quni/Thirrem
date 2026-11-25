@@ -1,6 +1,6 @@
 # Only a Rider's actions keep a Sandbox running
 
-A Sandbox stops 15 minutes after the Rider last did something, and is discarded 24 hours after it stops. "Something" is a request the Rider causes: opening the Sandbox, or asking for a route, the Fares, a place search or the street at a pin. Watching the live feed does not count. We rejected counting a visible or merely open page, so that a page left on screen or forgotten in a tab does not hold a running Sandbox.
+A Sandbox stops 15 minutes after the Rider last did something, and is discarded 24 hours after it stops. "Something" is a request the Rider causes: opening the Sandbox, requesting a Ride, or asking for a route, the Fares, a place search or the street at a pin. Watching the live feed does not count. We rejected counting a visible or merely open page, so that a page left on screen or forgotten in a tab does not hold a running Sandbox.
 
 A stopped Sandbox sends no positions: the live feed closes with code 4410, and the Rider app keeps the cars where they are and asks whether to continue or start a new one. Closing that dialog leaves a button on the map. Only opening the Sandbox again resumes it (either button, a moved pin or a reload), so there is one place to refuse when too many are running. Its Drivers carry on from where they stopped. Starting a new one replaces it at once, with `fresh: true` on the same request. After 24 hours it is discarded and the next visit makes a new one. The account is not touched.
 

@@ -1,4 +1,5 @@
 import type { Coordinate } from '@thirrem/types';
+import type { StoredRideRequest } from '../dispatch/ride-request.js';
 import type { Area } from './area.js';
 import type { SandboxDriver } from './sandbox-driver.js';
 
@@ -10,6 +11,7 @@ export interface Sandbox {
   lastActiveMs: number;
   /** When it last started running: as it was opened, or as it came back from being stopped. */
   resumedAtMs: number;
+  rideRequest?: StoredRideRequest;
 }
 
 export abstract class SandboxRepository {

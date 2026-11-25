@@ -62,7 +62,7 @@ export function candidatePoints(centre: Coordinate, random: Random): Candidate[]
  * The candidates closest to a road win. A random point is more often close to one where streets are dense,
  * so this leans Drivers towards built-up areas without counting streets.
  */
-export function chooseDrivers(centre: Coordinate, candidates: Candidate[], onRoad: Coordinate[] | null, newId: () => string): Array<Omit<SimulatedDriver, 'heading'>> {
+export function chooseDrivers(centre: Coordinate, candidates: Candidate[], onRoad: Coordinate[] | null, newId: () => string): Array<Omit<SimulatedDriver, 'heading' | 'available'>> {
   const spreadOut: Coordinate[] = [];
   return RINGS.flatMap(({ fromM, toM, drivers, gapM }, ring) => {
     const road: Array<{ point: Coordinate; offsetM: number }> = [];

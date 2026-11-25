@@ -2,7 +2,7 @@ import type { SimulatedDriver } from '@thirrem/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { liveUrl, watchDrivers } from './sandbox-live';
 
-const driver: SimulatedDriver = { id: 'one', vehicleType: 'economy', heading: 0, lat: 42.38, lon: 20.43 };
+const driver: SimulatedDriver = { id: 'one', vehicleType: 'economy', heading: 0, lat: 42.38, lon: 20.43, available: true };
 
 class FakeSocket {
   readonly sent: unknown[] = [];
