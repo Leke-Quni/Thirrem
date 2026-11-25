@@ -1,6 +1,6 @@
 import type { PlaceResult, VehicleType } from '@thirrem/types';
 import { type CSSProperties, useEffect, useRef } from 'react';
-import { formatDistance, formatDuration } from './format';
+import { formatCountdown, formatDistance, formatDuration } from './format';
 import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
 import { pinText, type StreetLookup } from './pin-text';
@@ -27,7 +27,8 @@ interface PlannerPanelProps {
   onRetryFare(): void;
   /** Set when the planner takes the place of a Ride Request, whose buttons held focus. */
   focusTitle: boolean;
-  request: { ready: boolean; pending: boolean; error: string | null; onRequest(): void };
+  /** `pausedForS` counts down while the Rider cannot request a Ride, having cancelled too often. */
+  request: { ready: boolean; pending: boolean; error: string | null; pausedForS: number | null; onRequest(): void };
 }
 
 const SLOTS: Array<{ slot: PinSlot; label: string }> = [
@@ -64,7 +65,7 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
     if (focusTitle) title.current?.focus({ preventScroll: true });
   }, []);
   // What is missing is already said by the route summary and the message on the map.
-  const requestable = Boolean(plan.pickup && plan.dropoff) && route.status === 'ready' && request.ready;
+  const requestable = Boolean(plan.pickup && plan.dropoff) && route.status === 'ready' && request.ready && !request.pausedForS;
   return (
     <section className="planner" aria-labelledby="planner-title">
       <h1 id="planner-title" ref={title} tabIndex={-1}>
@@ -152,7 +153,16 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
       )}
 
       <div className="request-ride">
-        <button type="button" className="btn primary" disabled={!requestable || request.pending} onClick={request.onRequest}>
+        {request.pausedForS && (
+          <div className="pause-note" id="pause-note">
+            {/* Only the reason is announced: a countdown read out every second would drown everything else. */}
+            <p role="status">Ride Requests are paused after too many cancellations.</p>
+            <p>
+              Request again in <strong>{formatCountdown(request.pausedForS)}</strong>
+            </p>
+          </div>
+        )}
+        <button type="button" className="btn primary" disabled={!requestable || request.pending} aria-describedby={request.pausedForS ? 'pause-note' : undefined} onClick={request.onRequest}>
           {request.pending && <span className="spinner small" aria-hidden="true" />}
           {request.pending ? 'Requesting…' : `Request ${VEHICLE_TYPE_NAMES[vehicleType]}`}
         </button>

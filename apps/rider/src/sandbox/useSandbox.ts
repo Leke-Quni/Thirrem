@@ -8,12 +8,15 @@ import { browserSocket, liveUrl, watchDrivers } from './sandbox-live';
 
 export type SandboxState =
   | { status: 'loading' }
-  | { status: 'ready'; drivers: SimulatedDriver[]; rideRequest: RideRequest | null; connection: 'live' | 'reconnecting' | 'stopped' | 'discarded' | 'resuming' }
+  | { status: 'ready'; drivers: SimulatedDriver[]; rideRequest: RideRequest | null; requestsPausedForS: number | null; cancelWarningAtMs: number | null; connection: 'live' | 'reconnecting' | 'stopped' | 'discarded' | 'resuming' }
   // `drivers` are those of a stopped Sandbox that could not be continued yet.
   | { status: 'busy'; drivers: SimulatedDriver[]; retrying: boolean }
   | { status: 'error'; message: string };
 
-const running = ({ drivers, rideRequest }: SandboxResponse): SandboxState => ({ status: 'ready', drivers, rideRequest, connection: 'live' });
+/** How long the API pauses Ride Requests for, shown until the live feed says how long is left. */
+const PAUSE_S = 15 * 60;
+
+const running = (sandbox: SandboxResponse): SandboxState => ({ status: 'ready', ...sandbox, connection: 'live' });
 
 export const hasTimedOut = (state: SandboxState) => state.status === 'ready' && (state.connection === 'stopped' || state.connection === 'discarded');
 
@@ -22,7 +25,7 @@ export function useSandbox(
   centre: Coordinate | null,
   pickup: Coordinate | null,
   dropoff: Coordinate | null,
-): { state: SandboxState; retry(): void; startNew(): void; requested(rideRequest: RideRequest): void; routing(): void } {
+): { state: SandboxState; retry(): void; startNew(): void; requested(rideRequest: RideRequest): void; cancelled(paused: boolean): void; routing(): void } {
   const [placedAt, setPlacedAt] = useState<Coordinate | null>(null);
   const [state, setState] = useState<SandboxState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -89,6 +92,13 @@ export function useSandbox(
   /** Shows a Ride Request just made, without waiting for the live feed to report it. */
   const requested = useCallback((rideRequest: RideRequest) => setState((current) => (current.status === 'ready' ? { ...current, rideRequest } : current)), []);
 
+  /** Takes a cancelled Ride Request off the screen, ahead of the live feed. */
+  const cancelled = useCallback(
+    (paused: boolean) =>
+      setState((current) => (current.status === 'ready' ? { ...current, rideRequest: null, requestsPausedForS: paused ? PAUSE_S : current.requestsPausedForS } : current)),
+    [],
+  );
+
   /** Shows that the matched Driver's route is being looked for again, ahead of the live feed. */
   const routing = useCallback(
     () => setState((current) => (current.status === 'ready' && current.rideRequest ? { ...current, rideRequest: { ...current.rideRequest, approach: { status: 'routing' } } } : current)),
@@ -101,5 +111,5 @@ export function useSandbox(
   useEffect(() => {
     if (notRunning.current) retry();
   }, [pickup, dropoff, retry]);
-  return { state, retry, startNew, requested, routing };
+  return { state, retry, startNew, requested, cancelled, routing };
 }

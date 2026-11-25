@@ -1,12 +1,15 @@
 import type { MatchedDriver, RideRequest } from '@thirrem/types';
-import { useEffect, useRef, useState } from 'react';
-import { formatFare } from '../map/format';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { formatCountdown, formatFare } from '../map/format';
 import { pinText } from '../map/pin-text';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
 import { useStreetName } from '../map/useStreetName';
 import { VEHICLE_TYPE_NAMES } from '../map/VehicleTypeList';
 import { ArrivalStatus } from './ArrivalStatus';
+import { cancelQuestion, LOCK_TEXT } from './cancel-text';
+import { HoldButton } from './HoldButton';
+import { useCancelRide } from './useCancelRide';
 
 interface RideRequestPanelProps {
   rideRequest: RideRequest;
@@ -14,6 +17,8 @@ interface RideRequestPanelProps {
   dropoff: PlanPoint | null;
   fare: FareState;
   onStartNew(): void;
+  /** `paused` is set when the cancel paused Ride Requests. */
+  onCancelled(paused: boolean): void;
   /** The API is looking for the matched Driver's route again. */
   onRouting(): void;
   /** For a failed Ride Request: asking for it again, or going back to the planner to change it. */
@@ -54,16 +59,23 @@ function Point({ label, point }: { label: string; point: PlanPoint | null }) {
   );
 }
 
-export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, onRouting, retry, onChange, focusTitle }: RideRequestPanelProps) {
-  const { status, driver, approach, offers, vehicleType } = rideRequest;
+export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, onCancelled, onRouting, retry, onChange, focusTitle }: RideRequestPanelProps) {
+  const { status, driver, approach, offers, vehicleType, cancellation } = rideRequest;
   const failed = status === 'failed';
   const type = VEHICLE_TYPE_NAMES[vehicleType];
   const quote = fare.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'cancel' | 'new' | null>(null);
   const title = useRef<HTMLHeadingElement>(null);
-  const start = useRef<HTMLButtonElement>(null);
+  const cancelStart = useRef<HTMLButtonElement>(null);
+  const newStart = useRef<HTMLButtonElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
-  const asked = useRef(false);
+  const asked = useRef<'cancel' | 'new' | null>(null);
+  const cancelling = useCancelRide(onCancelled);
+  const wouldPause = cancelling.wouldPause || Boolean(cancellation?.pausesRequests);
+
+  useEffect(() => {
+    if (cancelling.wouldPause) setConfirming('cancel');
+  }, [cancelling.wouldPause]);
 
   useEffect(() => {
     if (focusTitle) title.current?.focus({ preventScroll: true });
@@ -71,9 +83,19 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
 
   useEffect(() => {
     if (confirming) keep.current?.focus();
-    else if (asked.current) start.current?.focus();
+    else if (asked.current) (asked.current === 'cancel' ? cancelStart : newStart).current?.focus();
     asked.current = confirming;
   }, [confirming]);
+
+  const closeOnEscape = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') setConfirming(null);
+  };
+
+  const cancelError = cancelling.error && (
+    <div className="form-error" role="alert">
+      <span>{cancelling.error}</span>
+    </div>
+  );
 
   return (
     <section className="planner ride-request" aria-labelledby="ride-request-title">
@@ -143,23 +165,59 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
             </div>
           )}
         </div>
-      ) : confirming ? (
-        <div className="request-reset" role="group" aria-labelledby="reset-question">
-          <p id="reset-question">Start a new Sandbox? This drops your Ride Request and places new Drivers.</p>
-          <div className="reset-actions">
-            <button type="button" className="btn primary" onClick={onStartNew}>
-              Start new
+      ) : confirming === 'cancel' && cancellation ? (
+        <div className="request-reset cancel-confirm" role="group" aria-labelledby="cancel-question" onKeyDown={closeOnEscape}>
+          <p id="cancel-question" className={wouldPause ? 'cancel-cost is-pause' : 'reset-question'} aria-live="polite">
+            {cancelQuestion(rideRequest, wouldPause)}
+          </p>
+          {/* Side by side, with the safe choice first, so that one is not pressed for the other. */}
+          <div className="confirm-actions">
+            <button type="button" className="btn primary" ref={keep} onClick={() => setConfirming(null)}>
+              {driver ? 'Keep my Driver' : 'Keep Ride Request'}
             </button>
-            <button type="button" className="btn ghost" ref={keep} onClick={() => setConfirming(false)}>
+            <HoldButton label="Hold to cancel" pending={cancelling.pending} onHeld={() => cancelling.cancel(wouldPause)} />
+          </div>
+          {cancelError}
+        </div>
+      ) : confirming === 'new' ? (
+        <div className="request-reset" role="group" aria-labelledby="reset-question" onKeyDown={closeOnEscape}>
+          <p id="reset-question">Start a new Sandbox? This drops your Ride Request and places new Drivers.</p>
+          {cancellation?.pausesRequests && <p className="cancel-cost is-pause">{LOCK_TEXT}</p>}
+          <div className="reset-actions">
+            <button type="button" className={`btn ${cancellation?.pausesRequests ? 'ghost' : 'primary'}`} onClick={onStartNew}>
+              {cancellation?.pausesRequests ? 'Start new and pause' : 'Start new'}
+            </button>
+            <button type="button" className={`btn ${cancellation?.pausesRequests ? 'primary' : 'ghost'}`} ref={keep} onClick={() => setConfirming(null)}>
               Keep this one
             </button>
           </div>
         </div>
       ) : (
         <div className="request-reset">
-          <button type="button" className="btn ghost" ref={start} onClick={() => setConfirming(true)}>
-            Start a new Sandbox
-          </button>
+          <div className="reset-actions">
+            <button
+              type="button"
+              // Solid while quick, as the chance to take it runs out.
+              className={`btn ${cancellation?.quickForS ? 'primary quick-cancel' : 'ghost'}`}
+              ref={cancelStart}
+              aria-disabled={cancelling.pending}
+              // A free or quick cancel is done at once: asking first would use up the time it is quick for.
+              onClick={() => (wouldPause || cancellation?.counts === 'late' ? setConfirming('cancel') : cancelling.cancel(false))}
+            >
+              {cancelling.pending && <span className="spinner small" aria-hidden="true" />}
+              {cancellation?.quickForS ? (
+                <>
+                  Quick cancel <span className="quick-left">{formatCountdown(cancellation.quickForS)}</span>
+                </>
+              ) : (
+                'Cancel Ride Request'
+              )}
+            </button>
+            <button type="button" className="btn ghost" ref={newStart} onClick={() => setConfirming('new')}>
+              Start a new Sandbox
+            </button>
+          </div>
+          {cancelError}
         </div>
       )}
     </section>

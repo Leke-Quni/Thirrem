@@ -12,3 +12,6 @@ export function formatDuration(seconds: number): string {
 const euros = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' });
 
 export const formatFare = (cents: number): string => euros.format(cents / 100);
+
+/** Minutes and seconds left, as a clock counts them down. */
+export const formatCountdown = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
