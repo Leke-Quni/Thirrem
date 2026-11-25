@@ -14,4 +14,4 @@ While a Ride Request is open, its Sandbox keeps its Drivers even if the centre m
 - As every offered Driver accepts well inside the window, a search fails only when there is no Driver to ask, until #25.
 - A Rider with no Driver close by waits through empty areas, 9 seconds each, before anyone is asked.
 - A widened broadcast can reach a Driver who has since driven elsewhere, or miss one who has driven in.
-- Only failing closes a Ride Request so far: cancelling (#12) and pickup (#13) come later.
+- Failing and cancelling (ADR 0010) close a Ride Request: pickup (#13) comes later.
