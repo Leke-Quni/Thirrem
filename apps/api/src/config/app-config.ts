@@ -17,8 +17,8 @@ export interface AppConfig {
   /** The most Sandboxes that run at once. */
   sandboxLimit: number;
   dispatch: {
-    /** The fewest Available Drivers a quadtree cell must hold for a Ride Request to be broadcast around it. */
-    minDrivers: number;
+    /** How long a broadcast waits for a Driver to accept before the search widens. */
+    acceptWindowMs: number;
     /** How long after the broadcast a simulated Driver accepts. */
     acceptAfterMs: { min: number; max: number };
   };
@@ -52,6 +52,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
     sandboxLimit: 30,
-    dispatch: { minDrivers: Number(env.DISPATCH_MIN_DRIVERS ?? 5), acceptAfterMs: { min: 2_000, max: 8_000 } },
+    dispatch: { acceptWindowMs: Number(env.DISPATCH_ACCEPT_WINDOW_MS ?? 9_000), acceptAfterMs: { min: 2_000, max: 8_000 } },
   };
 }

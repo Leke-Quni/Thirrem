@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
-import type { RideRequest, SimulatedDriver, VehicleType } from '@thirrem/types';
+import type { RideRequest, SandboxResponse, SimulatedDriver, VehicleType } from '@thirrem/types';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AppConfig } from '../src/config/app-config.js';
+import { type AppConfig, loadConfig } from '../src/config/app-config.js';
 import { createTestApp, ManualClock } from './support/app.js';
 import { FixedAreaRepository } from './support/fixed-area.js';
 
@@ -41,7 +41,8 @@ describe('Broadcasting a Ride Request', () => {
   /** A Rider with a Sandbox whose Drivers are parked exactly where the test puts them. */
   const start = async (placed: Placed[], config: Partial<AppConfig> = {}) => {
     const stations = placed.map(({ east, south = 0, vehicleType = 'economy' }, index) => ({ vehicleType, heading: 0, ...inCell(east, south, 0.2 + index * 0.02) }));
-    const app = await createTestApp({ clock: new ManualClock(new Date('2026-01-01T00:00:00Z')), areas: new FixedAreaRepository({ centre: pickup, stations, paths: [] }), config });
+    const clock = new ManualClock(new Date('2026-01-01T00:00:00Z'));
+    const app = await createTestApp({ clock, areas: new FixedAreaRepository({ centre: pickup, stations, paths: [] }), config });
     apps.push(app);
     const server = app.getHttpServer();
     const { body: session } = await request(server).post('/rider/auth/signup').send({ email: `rider-${randomUUID()}@example.com`, password });
@@ -54,8 +55,13 @@ describe('Broadcasting a Ride Request', () => {
       const res = await request(server).post('/rider/ride-requests').set('Authorization', authorization).send({ pickup, dropoff, vehicleType }).expect(201);
       return (res.body as RideRequest).offers.map((offer) => names.get(offer.driverId)).sort();
     };
-    return { broadcast };
+    const look = async (): Promise<SandboxResponse> => (await request(server).put('/rider/sandbox').set('Authorization', authorization).send({ centre: pickup }).expect(200)).body;
+    /** The names of the Drivers it has been broadcast to by now. */
+    const offered = async () => (await look()).rideRequest!.offers.map((offer) => names.get(offer.driverId)).sort();
+    return { broadcast, offered, look, clock };
   };
+  /** The standard dispatch, but with no Driver answering inside the accept window. */
+  const unanswered = { dispatch: { ...loadConfig().dispatch, acceptAfterMs: { min: 60_000_000, max: 60_000_000 } } };
   const namesOf = (...groups: Placed[][]) => groups.flat().map(({ name }) => name).sort();
 
   it('offers it only to Drivers of the requested Vehicle Type', async () => {
@@ -65,44 +71,92 @@ describe('Broadcasting a Ride Request', () => {
     expect(await broadcast('comfort')).toEqual(namesOf(comfort));
   });
 
-  it('searches the smallest cell holding 5 Drivers and the cells next to it', async () => {
-    const inside = many(5, 'inside', 0);
-    const nextTo = [...many(1, 'east', 1), ...many(1, 'north west', -1, -1)];
-    const { broadcast } = await start([...inside, ...nextTo, ...many(1, 'two cells away', 2)]);
-
-    expect(await broadcast()).toEqual(namesOf(inside, nextTo));
-  });
-
-  it('moves up to the parent cell when the smaller one holds only 4, however many are next to it', async () => {
-    const inside = many(4, 'inside', 0);
-    // In the next cell, which shares the parent, and in the parent's own neighbour.
-    const wider = [...many(1, 'sibling', 1, 1), ...many(1, 'next to the parent', 3)];
-    const { broadcast } = await start([...inside, ...wider, ...many(1, 'beyond', 4)]);
-
-    expect(await broadcast()).toEqual(namesOf(inside, wider));
-  });
-
-  it('counts only Drivers of the requested Vehicle Type towards the 5', async () => {
-    const economy = many(4, 'economy', 0);
-    const xl = many(3, 'xl', 0).map((driver) => ({ ...driver, vehicleType: 'xl' as const }));
-    const wider = many(1, 'economy further out', 3);
-    const { broadcast } = await start([...economy, ...xl, ...wider]);
-
-    expect(await broadcast()).toEqual(namesOf(economy, wider));
-  });
-
-  it('can be tuned to need fewer Drivers', async () => {
-    const near = [...many(2, 'inside', 0), ...many(1, 'next to it', 1)];
-    const { broadcast } = await start([...near, ...many(3, 'two cells away', 2)], { dispatch: { minDrivers: 2, acceptAfterMs: { min: 2_000, max: 8_000 } } });
+  it('first asks the Drivers in the smallest cell and the cells next to it, however few they are', async () => {
+    const near = [...many(1, 'inside', 0), ...many(1, 'east', 1), ...many(1, 'north west', -1, -1)];
+    const { broadcast } = await start([...near, ...many(5, 'two cells away', 2)]);
 
     expect(await broadcast()).toEqual(namesOf(near));
   });
 
-  it('stops widening at the largest area, offering it to whoever is there', async () => {
-    // A level 10 cell is 64 level 16 cells across.
-    const there = [...many(2, 'near', 0), ...many(1, 'far', 60)];
-    const { broadcast } = await start([...there, ...many(1, 'out of reach', 200)]);
+  it('widens to the parent cell when nobody has accepted within 9 seconds', async () => {
+    const near = many(1, 'inside', 0);
+    const wider = many(1, 'next to the parent', 3);
+    const { broadcast, offered, clock } = await start([...near, ...wider, ...many(1, 'beyond', 4)], unanswered);
+    await broadcast();
 
-    expect(await broadcast()).toEqual(namesOf(there));
+    clock.advance(8_999);
+    expect(await offered()).toEqual(namesOf(near));
+    clock.advance(1);
+
+    expect(await offered()).toEqual(namesOf(near, wider));
+  });
+
+  it('widens one level for each window that passes, up to the largest', async () => {
+    // Each is first reached by one area: from level 16 in the first window to level 10 in the seventh.
+    const reached = [0, 3, 5, 9, 20, 40, 100].map((east, window) => ({ name: `window ${window}`, east }));
+    const { broadcast, offered, clock } = await start([...reached, ...many(1, 'out of reach', 200)], unanswered);
+    expect(await broadcast()).toEqual(namesOf(reached.slice(0, 1)));
+
+    for (let window = 1; window < reached.length; window += 1) {
+      clock.advance(9_000);
+      expect(await offered()).toEqual(namesOf(reached.slice(0, window + 1)));
+    }
+  });
+
+  it('matches a Driver who is only reached once the search has widened', async () => {
+    const { broadcast, look, clock } = await start(many(1, 'next to the parent', 3));
+    expect(await broadcast()).toEqual([]);
+
+    clock.advance(10_999);
+    expect((await look()).rideRequest!.status).toBe('searching');
+    clock.advance(6_001);
+
+    expect((await look()).rideRequest).toMatchObject({ status: 'matched', offers: [{ status: 'accepted' }] });
+  });
+
+  it('can be tuned to wait longer before widening', async () => {
+    const near = many(1, 'inside', 0);
+    const wider = many(1, 'next to the parent', 3);
+    const { broadcast, offered, clock } = await start([...near, ...wider], { dispatch: { ...unanswered.dispatch, acceptWindowMs: 30_000 } });
+    await broadcast();
+
+    clock.advance(29_999);
+    expect(await offered()).toEqual(namesOf(near));
+    clock.advance(1);
+
+    expect(await offered()).toEqual(namesOf(near, wider));
+  });
+
+  it('is not widened once a Driver has accepted', async () => {
+    const near = many(1, 'inside', 0);
+    const { broadcast, offered, clock } = await start([...near, ...many(1, 'next to the parent', 3)]);
+    await broadcast();
+
+    clock.advance(60_000);
+
+    expect(await offered()).toEqual(namesOf(near));
+  });
+
+  it('fails once the windows of all seven areas, 63 seconds in all, have passed', async () => {
+    const { broadcast, look, clock } = await start(many(5, 'inside', 0), unanswered);
+    await broadcast();
+
+    clock.advance(62_999);
+    expect((await look()).rideRequest!.status).toBe('searching');
+    clock.advance(1);
+
+    const { rideRequest, drivers } = await look();
+    expect(rideRequest).toMatchObject({ status: 'failed', driver: null });
+    expect(rideRequest!.offers.map((offer) => offer.status)).toEqual(Array(5).fill('withdrawn'));
+    expect(drivers.every((driver) => driver.available)).toBe(true);
+  });
+
+  it('fails when there is no Driver to ask', async () => {
+    const { broadcast, look, clock } = await start(many(1, 'out of reach', 200));
+    expect(await broadcast()).toEqual([]);
+
+    clock.advance(63_000);
+
+    expect((await look()).rideRequest).toMatchObject({ status: 'failed', offers: [], driver: null });
   });
 });

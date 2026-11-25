@@ -4,12 +4,16 @@ import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 import type { RideRequest, SandboxResponse, VehicleType } from '@thirrem/types';
 import { afterEach, describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config/app-config.js';
 import { createTestApp, ManualClock } from './support/app.js';
 
 const password = 'Correct-horse-battery';
 const centre = { lat: 42.3803, lon: 20.4308 };
 const dropoff = { lat: 42.39, lon: 20.45 };
 const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+/** Long enough for a Driver in the widest area to have accepted. */
+const UNTIL_MATCHED = 62_000;
 
 describe("A Rider's Ride Request", () => {
   const apps: INestApplication[] = [];
@@ -54,6 +58,11 @@ describe("A Rider's Ride Request", () => {
   const statuses = (rideRequest: RideRequest) => rideRequest.offers.map((offer) => offer.status);
   const unavailable = ({ drivers }: SandboxResponse) => drivers.filter((driver) => !driver.available).map((driver) => driver.id);
 
+  /** The standard dispatch, but with no Driver answering inside the accept window, so the Ride Request fails. */
+  const unanswered = { config: { dispatch: { ...loadConfig().dispatch, acceptAfterMs: { min: HOUR, max: HOUR } } } };
+  /** Every window there is. */
+  const UNTIL_FAILED = 63_000;
+
   it('has none until the Rider asks', async () => {
     const { opened } = await start();
     const rider = await opened();
@@ -65,16 +74,16 @@ describe("A Rider's Ride Request", () => {
   });
 
   it.each<VehicleType>(['economy', 'comfort', 'xl', 'electric'])('searches for a Driver of the chosen Vehicle Type: %s', async (vehicleType) => {
-    const { opened } = await start();
+    const { clock, opened } = await start(unanswered);
     const rider = await opened();
 
     const { body } = await rider.ask({ vehicleType }).expect(201);
+    clock.advance(UNTIL_FAILED - 1);
 
     expect(body).toMatchObject({ vehicleType, pickup: centre, dropoff, status: 'searching', driver: null });
-    const { drivers } = await rider.sandbox();
-    expect(body.offers.length).toBeGreaterThanOrEqual(5);
-    for (const { driverId } of body.offers) expect(drivers.find((driver) => driver.id === driverId)?.vehicleType).toBe(vehicleType);
-    expect(new Set(statuses(body))).toEqual(new Set(['offered']));
+    const { drivers, rideRequest } = await rider.sandbox();
+    expect(rideRequest!.offers.map((offer) => offer.driverId).sort()).toEqual(drivers.filter((driver) => driver.vehicleType === vehicleType).map((driver) => driver.id).sort());
+    expect(new Set(statuses(rideRequest!))).toEqual(new Set(['offered']));
   });
 
   it('is still searching before any Driver has had time to accept', async () => {
@@ -94,7 +103,7 @@ describe("A Rider's Ride Request", () => {
     const rider = await opened();
     await rider.ask().expect(201);
 
-    clock.advance(8_000);
+    clock.advance(UNTIL_MATCHED);
 
     const { rideRequest } = await rider.sandbox();
     expect(rideRequest?.status).toBe('matched');
@@ -104,7 +113,7 @@ describe("A Rider's Ride Request", () => {
   });
 
   it('is matched as soon as one Driver accepts, and stays with that Driver', async () => {
-    const { clock, opened } = await start({ config: { dispatch: { minDrivers: 5, acceptAfterMs: { min: 2_000, max: 8_000 } } } });
+    const { clock, opened } = await start({ config: { dispatch: { ...loadConfig().dispatch, acceptAfterMs: { min: 2_000, max: 8_000 } } } });
     const rider = await opened();
     await rider.ask().expect(201);
     let first: RideRequest | null = null;
@@ -124,7 +133,7 @@ describe("A Rider's Ride Request", () => {
     const rider = await opened();
     await rider.ask({ vehicleType: 'electric' }).expect(201);
 
-    clock.advance(8_000);
+    clock.advance(UNTIL_MATCHED);
 
     const driver = (await rider.sandbox()).rideRequest!.driver!;
     expect(driver.name).toMatch(/^\p{L}+ \p{L}\.$/u);
@@ -141,7 +150,7 @@ describe("A Rider's Ride Request", () => {
     await rider.ask().expect(201);
     expect(unavailable(await rider.sandbox())).toEqual([]);
 
-    clock.advance(8_000);
+    clock.advance(UNTIL_MATCHED);
 
     const sandbox = await rider.sandbox();
     expect(unavailable(sandbox)).toEqual([sandbox.rideRequest!.driver!.id]);
@@ -151,7 +160,7 @@ describe("A Rider's Ride Request", () => {
     const { clock, opened, live } = await start();
     const rider = await opened();
     await rider.ask().expect(201);
-    clock.advance(8_000);
+    clock.advance(UNTIL_MATCHED);
 
     const message = await live(rider.token);
 
@@ -176,7 +185,7 @@ describe("A Rider's Ride Request", () => {
     const { body: first } = await rider.ask().expect(201);
 
     const searching = await rider.ask({ vehicleType: 'xl' }).expect(409);
-    clock.advance(8_000);
+    clock.advance(UNTIL_MATCHED);
     await rider.ask().expect(409);
 
     expect(searching.body.message).toMatch(/already have an open Ride Request/i);
@@ -190,6 +199,41 @@ describe("A Rider's Ride Request", () => {
     const answers = await Promise.all([rider.ask(), rider.ask()]);
 
     expect(answers.map((res) => res.status).sort()).toEqual([201, 409]);
+  });
+
+  it('is told to the Rider on the live feed once it has failed', async () => {
+    const { clock, opened, live } = await start(unanswered);
+    const rider = await opened();
+    await rider.ask().expect(201);
+    clock.advance(UNTIL_FAILED);
+
+    expect((await live(rider.token)).rideRequest?.status).toBe('failed');
+  });
+
+  it('can be made again after one has failed', async () => {
+    const { clock, opened } = await start(unanswered);
+    const rider = await opened();
+    const { body: first } = await rider.ask().expect(201);
+    clock.advance(UNTIL_FAILED);
+
+    const { body: second } = await rider.ask({ vehicleType: 'xl' }).expect(201);
+
+    expect(second.id).not.toBe(first.id);
+    expect(second).toMatchObject({ vehicleType: 'xl', status: 'searching' });
+    expect((await rider.sandbox()).rideRequest).toEqual(second);
+  });
+
+  it('no longer keeps its Drivers once it has failed and the Rider moves', async () => {
+    const { clock, opened } = await start(unanswered);
+    const rider = await opened();
+    await rider.ask().expect(201);
+    const before = await rider.sandbox();
+    clock.advance(UNTIL_FAILED);
+
+    const after = await rider.sandbox({ centre: { lat: 48.8566, lon: 2.3522 } });
+
+    expect(after.rideRequest).toBeNull();
+    expect(after.drivers[0]!.id).not.toBe(before.drivers[0]!.id);
   });
 
   it('keeps its Drivers when the Rider moves while it is open', async () => {
@@ -206,7 +250,7 @@ describe("A Rider's Ride Request", () => {
 
   it.each([
     ['searching', 0],
-    ['matched', 8_000],
+    ['matched', UNTIL_MATCHED],
   ])('is dropped when the Rider starts a new Sandbox while %s', async (_, waitMs) => {
     const { clock, opened } = await start();
     const rider = await opened();
@@ -234,7 +278,7 @@ describe("A Rider's Ride Request", () => {
     const { clock, opened } = await start();
     const [one, other] = [await opened(), await opened()];
     await one.ask().expect(201);
-    clock.advance(8_000);
+    clock.advance(UNTIL_MATCHED);
 
     const theirs = await other.sandbox();
 

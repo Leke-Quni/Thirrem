@@ -69,12 +69,13 @@ export interface SandboxResponse {
   rideRequest: RideRequest | null;
 }
 
-export type RideRequestStatus = 'searching' | 'matched';
+/** Failed once every accept window has passed with no Driver accepting. It is then closed. */
+export type RideRequestStatus = 'searching' | 'matched' | 'failed';
 
 /** What a Driver the Ride Request was broadcast to has done with it. */
 export interface RideRequestOffer {
   driverId: string;
-  /** Withdrawn once another Driver has accepted. */
+  /** Withdrawn once another Driver has accepted, or the Ride Request has failed. */
   status: 'offered' | 'accepted' | 'withdrawn';
 }
 
@@ -85,7 +86,7 @@ export interface RideRequest {
   dropoff: Coordinate;
   status: RideRequestStatus;
   offers: RideRequestOffer[];
-  /** The matched Driver, or null while searching. */
+  /** The matched Driver, or null if none is. */
   driver: MatchedDriver | null;
 }
 

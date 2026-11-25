@@ -3,7 +3,7 @@ import { ConflictException, Inject, Injectable, ServiceUnavailableException } fr
 import type { Coordinate, SandboxBusyResponse, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
-import { matchedDriverId, rideRequestView } from '../dispatch/ride-request.js';
+import { isOpen, matchedDriverId, rideRequestView } from '../dispatch/ride-request.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
 import { AreaService } from './area.service.js';
@@ -79,7 +79,7 @@ export class SandboxService extends RiderActivity {
     const matched = drivers.find((driver) => driver.id === matchedId);
     return {
       drivers: drivers.map((driver) => ({ ...driverAt(driver, area, resumedAtMs, nowMs), available: driver !== matched })),
-      rideRequest: rideRequest ? rideRequestView(rideRequest, matched ? { id: matched.id, ...matched.profile } : null) : null,
+      rideRequest: rideRequest ? rideRequestView(rideRequest, matched ? { id: matched.id, ...matched.profile } : null, nowMs) : null,
     };
   }
 
@@ -96,10 +96,11 @@ export class SandboxService extends RiderActivity {
 
   private async reuseOrPlace(accountId: string, centre: Coordinate, fresh: boolean): Promise<Sandbox> {
     const existing = fresh ? null : await this.sandboxes.findByAccount(accountId);
+    const askedAtMs = this.clock.now().getTime();
     const reused =
       existing &&
-      (existing.rideRequest || distanceM(existing.centre, centre) <= SAME_PLACE_M) &&
-      sandboxStatus(existing.lastActiveMs, this.clock.now().getTime()) !== 'discarded';
+      ((existing.rideRequest && isOpen(existing.rideRequest, askedAtMs)) || distanceM(existing.centre, centre) <= SAME_PLACE_M) &&
+      sandboxStatus(existing.lastActiveMs, askedAtMs) !== 'discarded';
     // Checked before placing too, so that a Rider who will be turned away costs the road service nothing.
     if (!reused && !(await this.sandboxes.hasRoom(accountId, runningCutoffMs(this.clock.now().getTime()), this.config.sandboxLimit))) throw busy();
     const area = reused ? existing.area : await this.areas.areaAt(centre);
