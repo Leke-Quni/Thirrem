@@ -39,3 +39,17 @@ export interface PlaceResult {
 export interface StreetResponse {
   street: string | null;
 }
+
+export type VehicleType = 'economy' | 'comfort' | 'xl' | 'electric';
+
+export interface FareQuote {
+  vehicleType: VehicleType;
+  amountCents: number;
+  currency: 'EUR';
+}
+
+export interface FareResponse {
+  distanceM: number;
+  durationS: number;
+  fares: FareQuote[];
+}

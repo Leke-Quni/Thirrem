@@ -1,3 +1,5 @@
+import { type FareRates, FARE_RATES } from '../fares/fare-rates.js';
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -9,6 +11,7 @@ export interface AppConfig {
   searchRateLimit: { limit: number; windowMs: number };
   routeRateLimit: { limit: number; windowMs: number };
   authRateLimit: { limit: number; windowMs: number };
+  fareRates: FareRates;
 }
 
 const DEV_DATABASE_URL = 'postgres://thirrem:thirrem@localhost:5433/thirrem';
@@ -35,5 +38,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     searchRateLimit: { limit: Number(env.SEARCH_RATE_LIMIT ?? 60), windowMs: 60_000 },
     osrmUrl: (env.OSRM_URL ?? 'https://router.project-osrm.org').replace(/\/$/, ''),
     authRateLimit: { limit: Number(env.AUTH_RATE_LIMIT ?? 10), windowMs: 60_000 },
+    fareRates: FARE_RATES,
   };
 }

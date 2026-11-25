@@ -8,3 +8,7 @@ export function formatDuration(seconds: number): string {
   if (minutes < 60) return `${minutes} min`;
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
+
+const euros = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' });
+
+export const formatFare = (cents: number): string => euros.format(cents / 100);

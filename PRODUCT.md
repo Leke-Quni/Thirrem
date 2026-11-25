@@ -29,7 +29,7 @@ A ride-hailing platform a visitor can run entirely alone: three independent apps
 
 ## Capabilities and Constraints
 - Core: Ride Requests, matching, live tracking, Fare, card payment (Stripe test mode), mutual ratings.
-- Ride options: Economy, Comfort and XL Vehicle Types; Shared Rides (chosen per Ride Request); Scheduled Ride Requests.
+- Ride options: Economy, Comfort, XL and Electric Vehicle Types; Shared Rides (chosen per Ride Request); Scheduled Ride Requests.
 - Driver side: online and offline, onboarding approved by a simulated Admin, a simulated earnings ledger with a 20% platform commission and a fake cash-out.
 - Trust: real-time chat (simulated actors reply with canned messages), SOS that raises an incident for the Admin, receipts.
 - Admin: user management, Driver approval, live fleet map, disputes and refunds, analytics, on a seeded and continuously active simulation.

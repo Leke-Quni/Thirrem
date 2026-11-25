@@ -1,0 +1,24 @@
+import type { FareQuote, VehicleType } from '@thirrem/types';
+import type { FareRates, VehicleRate } from './fare-rates.js';
+
+const VEHICLE_TYPES: VehicleType[] = ['economy', 'comfort', 'xl', 'electric'];
+
+export interface Trip {
+  distanceM: number;
+  durationS: number;
+}
+
+// Summed in 1/3000 of a cent, a unit both metres and seconds divide into, so only the total is rounded.
+function amountCents(rate: VehicleRate, thresholdM: number, { distanceM, durationS }: Trip): number {
+  const longDistanceM = Math.max(0, distanceM - thresholdM);
+  const total = rate.baseCents * 3000 + (rate.perKmCents * distanceM + rate.longDistancePerKmCents * longDistanceM) * 3 + rate.perMinCents * durationS * 50;
+  return Math.round(total / 3000);
+}
+
+export function calculateFares(rates: FareRates, trip: Trip): FareQuote[] {
+  return VEHICLE_TYPES.map((vehicleType) => ({
+    vehicleType,
+    amountCents: amountCents(rates.vehicleTypes[vehicleType], rates.longDistanceThresholdM, trip),
+    currency: 'EUR',
+  }));
+}

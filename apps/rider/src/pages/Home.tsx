@@ -1,4 +1,4 @@
-import type { Coordinate, PlaceResult } from '@thirrem/types';
+import type { Coordinate, PlaceResult, VehicleType } from '@thirrem/types';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -9,12 +9,13 @@ import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
 import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
+import { useFareQuote } from '../map/useFareQuote';
 import { useRoute } from '../map/useRoute';
 import { HomeSkeleton } from './HomeSkeleton';
 import { SessionUnavailable } from './SessionUnavailable';
 
 export function Home() {
-  const { email, loading, unreachable, retry: retrySession, logout } = useAuth();
+  const { email, loading, unreachable, expired, retry: retrySession, logout } = useAuth();
   const navigate = useNavigate();
   const loggingOut = useRef(false);
   const [plan, dispatch] = useReducer(planReducer, initialPlan);
@@ -23,6 +24,8 @@ export function Home() {
   const [locateMessage, setLocateMessage] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ point: Coordinate; nonce: number } | null>(null);
   const { state: route, retry } = useRoute(plan.pickup, plan.dropoff);
+  const { state: fare, retry: retryFare } = useFareQuote(plan.pickup, plan.dropoff);
+  const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
 
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -57,7 +60,7 @@ export function Home() {
 
   if (loading) return <HomeSkeleton />;
   if (unreachable) return <SessionUnavailable onRetry={retrySession} />;
-  if (!email) return loggingOut.current ? null : <Navigate to="/login" replace />;
+  if (!email) return loggingOut.current ? null : <Navigate to={expired ? '/login' : '/'} replace />;
 
   return (
     <div className="ride-page">
@@ -83,6 +86,10 @@ export function Home() {
         <PlannerPanel
           plan={plan}
           route={route}
+          fare={fare}
+          vehicleType={vehicleType}
+          onChooseVehicleType={setVehicleType}
+          onRetryFare={retryFare}
           mapReady={mapState === 'ready'}
           locating={locating}
           locateMessage={locateMessage}
@@ -90,7 +97,10 @@ export function Home() {
           onChoosePlace={choosePlace}
           onSelect={(slot) => dispatch({ type: 'select', slot })}
           onRemove={(slot) => dispatch({ type: 'remove', slot })}
-          onRetry={retry}
+          onRetry={() => {
+            retry();
+            retryFare();
+          }}
         />
         <div className="map-card">
           <RideMap

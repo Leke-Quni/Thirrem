@@ -41,8 +41,12 @@ The amount a Rider pays for a Ride, set by the Vehicle Type and the distance and
 _Avoid_: Price, cost, charge
 
 **Vehicle Type**:
-A category of vehicle a Rider can choose, each with its own Fare rate.
+A category of vehicle a Rider can choose, each with its own Fare rate. There are four: Economy, Comfort, XL and Electric.
 _Avoid_: Ride type, tier, class
+
+**Fare Quote**:
+The Fare for each Vehicle Type, shown for a route before the Rider requests a Ride.
+_Avoid_: Estimate, price list
 
 **Sandbox**:
 A visitor's private, self-contained simulated world within one app, holding its own Riders, Drivers and Rides, discarded after inactivity.

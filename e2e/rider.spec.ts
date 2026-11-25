@@ -123,9 +123,27 @@ test.describe('Rider accounts', () => {
     await expect(page.getByRole('alert')).toContainText(/already exists/i);
   });
 
-  test('has no guest mode: the home page sends a visitor without an account to login', async ({ page }) => {
+  test('has no guest mode: the home page sends a visitor without an account to the landing page', async ({ page }) => {
     await page.goto('/home');
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
+  });
+
+  test('sends a logged-out visitor from /home to the landing page before any app code, never showing the planner loader', async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/src/main.tsx*', async (r) => {
+      await gate;
+      await r.continue();
+    });
+
+    await page.goto('/home', { waitUntil: 'commit' });
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator('#boot-home')).toBeAttached();
+    await expect(page.getByText('Loading your ride planner…')).toHaveCount(0);
+    release();
+    await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
   });
 
   test.describe('a logged-in rider', () => {
@@ -154,6 +172,17 @@ test.describe('Rider accounts', () => {
       await page.goto('/');
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    });
+
+    test('lands on the landing page when going back to /home after logging out', async ({ page }) => {
+      await page.goto('/home');
+      await page.getByRole('button', { name: 'Log out' }).click();
+      await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
+
+      await page.goBack();
+
+      await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeVisible();
+      await expect(page).toHaveURL(/\/$/);
     });
 
     test('is not bounced back to the home page after logging out', async ({ page }) => {
@@ -294,8 +323,20 @@ test.describe('Rider ride planner', () => {
     ],
   };
 
+  const quote = {
+    distanceM: 1850,
+    durationS: 241,
+    fares: [
+      { vehicleType: 'economy', amountCents: 202, currency: 'EUR' },
+      { vehicleType: 'comfort', amountCents: 279, currency: 'EUR' },
+      { vehicleType: 'xl', amountCents: 364, currency: 'EUR' },
+      { vehicleType: 'electric', amountCents: 279, currency: 'EUR' },
+    ],
+  };
+
   async function signUpAndOpenPlanner(page: import('@playwright/test').Page, street: string | null = null) {
     await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street } }));
+    await page.route('**/rider/fare', (r) => r.fulfill({ json: quote }));
     await page.goto('/signup');
     await page.getByLabel('Email').fill(newEmail());
     await page.getByLabel('Password', { exact: true }).fill(password);
@@ -303,6 +344,140 @@ test.describe('Rider ride planner', () => {
     await expect(page).toHaveURL(/\/home$/);
     await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
+  }
+
+  const placeBothPins = async (page: import('@playwright/test').Page) => {
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+  };
+
+  test('shows a Fare for Economy, Comfort, XL and Electric, with Economy chosen to start', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await placeBothPins(page);
+
+    const types = page.getByRole('group', { name: 'Choose a Vehicle Type' });
+    await expect(types.getByRole('radio', { name: 'Economy €2.02' })).toBeChecked();
+    await expect(types.getByRole('radio', { name: 'Comfort €2.79' })).not.toBeChecked();
+    await expect(types.getByRole('radio', { name: 'XL €3.64' })).not.toBeChecked();
+    await expect(types.getByRole('radio', { name: 'Electric €2.79' })).not.toBeChecked();
+  });
+
+  test('keeps the chosen Vehicle Type when a pin moves', async ({ page }) => {
+    let quotes = 0;
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await page.route('**/rider/fare', (r) => {
+      quotes += 1;
+      return r.fulfill({ json: quote });
+    });
+    await placeBothPins(page);
+
+    await page.getByText('Comfort', { exact: true }).click();
+    await expect(page.getByRole('radio', { name: /comfort/i })).toBeChecked();
+
+    await page.getByRole('button', { name: /pickup point pin/i }).focus();
+    await page.keyboard.press('ArrowRight');
+
+    await expect.poll(() => quotes).toBe(2);
+    await expect(page.getByRole('radio', { name: /comfort/i })).toBeChecked();
+  });
+
+  test('changes the Vehicle Type with the arrow keys', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await placeBothPins(page);
+
+    await page.getByRole('radio', { name: /economy/i }).focus();
+    await page.keyboard.press('ArrowDown');
+
+    await expect(page.getByRole('radio', { name: /comfort/i })).toBeChecked();
+  });
+
+  test('says plainly when the Fares cannot be loaded and lets the Rider try again', async ({ page }) => {
+    let attempts = 0;
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await page.route('**/rider/fare', (r) => {
+      attempts += 1;
+      return attempts === 1 ? r.fulfill({ status: 503, json: { message: 'Routing is unavailable right now. Try again in a moment.' } }) : r.fulfill({ json: quote });
+    });
+    await placeBothPins(page);
+
+    await expect(page.getByRole('alert')).toContainText(/routing is unavailable/i);
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    await expect(page.getByRole('radio', { name: /economy/i })).toBeVisible();
+  });
+
+  const trips = [
+    { name: 'a short trip', distanceM: 1850, durationS: 241, shown: '1.9 km' },
+    { name: 'a long trip', distanceM: 86_000, durationS: 5250, shown: '1 h 28 min' },
+    { name: 'a trip across a continent', distanceM: 5_432_100, durationS: 215_940, shown: '59 h 59 min' },
+  ];
+  for (const { viewport, trip } of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 700 }].flatMap((viewport) => trips.map((trip) => ({ viewport, trip })))) {
+    test(`does not resize the planner as the route and Fares arrive for ${trip.name}, at ${viewport.width} px wide`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.route('**/rider/route', (r) => r.fulfill({ json: { ...route, distanceM: trip.distanceM, durationS: trip.durationS } }));
+      await signUpAndOpenPlanner(page);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/rider/fare', async (r) => {
+        await gate;
+        await r.fulfill({ json: quote });
+      });
+      const height = async () => (await page.locator('.planner').boundingBox())!.height;
+      const empty = await height();
+      await placeBothPins(page);
+
+      await expect(page.getByRole('status').filter({ hasText: 'Loading the Fares…' })).toBeAttached();
+      const loading = await height();
+      release();
+      await expect(page.getByRole('radio', { name: /xl/i })).toBeVisible();
+      await expect(page.getByText(trip.shown)).toBeVisible();
+
+      expect(loading).toBe(empty);
+      expect(await height()).toBe(empty);
+    });
+  }
+
+  test('leaves room to spare for the pin labels on a narrow phone, so wider fonts do not wrap them', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await placeBothPins(page);
+    await expect(page.getByRole('button', { name: 'Remove the Pickup Point' })).toBeVisible();
+
+    const spare = await page.locator('.pin-row-main').evaluateAll((rows) =>
+      Math.min(
+        ...rows.map((row) => {
+          const style = getComputedStyle(row);
+          const glyph = row.firstElementChild!.getBoundingClientRect().width;
+          const room = row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - parseFloat(style.columnGap) - glyph;
+          const label = document.createRange();
+          label.selectNodeContents(row.querySelector('strong')!);
+          return room - label.getBoundingClientRect().width;
+        }),
+      ),
+    );
+
+    expect(spare).toBeGreaterThanOrEqual(8);
+  });
+
+  for (const width of [320, 360, 390, 1280]) {
+    test(`keeps every Vehicle Type name and a long Fare inside its option at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+      await signUpAndOpenPlanner(page);
+      await page.route('**/rider/fare', (r) => r.fulfill({ json: { ...quote, fares: quote.fares.map((fare) => ({ ...fare, amountCents: 1_234_567 })) } }));
+      await placeBothPins(page);
+      await expect(page.getByText('€12,345.67')).toHaveCount(4);
+
+      const spill = await page.locator('.vehicle-type span').evaluateAll((parts) => Math.max(...parts.map((el) => el.getBoundingClientRect().width - el.parentElement!.clientWidth)));
+
+      expect(spill).toBeLessThanOrEqual(0);
+    });
   }
 
   test('shows the page shell and its own loader straight away on a slow connection, instead of a blank page', async ({ page }) => {
@@ -585,6 +760,8 @@ test.describe('Rider ride planner', () => {
 });
 
 test.describe('Rider first paint on a slow connection', () => {
+  const withSession = (page: import('@playwright/test').Page) => page.addInitScript(() => localStorage.setItem('thirrem-rider-token', 'a-stored-session'));
+
   const holdAppCode = async (page: import('@playwright/test').Page) => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -596,6 +773,7 @@ test.describe('Rider first paint on a slow connection', () => {
   };
 
   test('shows the page shell on the dark background before any app code has arrived on /home, never a white screen', async ({ page }) => {
+    await withSession(page);
     const release = await holdAppCode(page);
 
     await page.goto('/home', { waitUntil: 'commit' });
@@ -611,6 +789,7 @@ test.describe('Rider first paint on a slow connection', () => {
   });
 
   test('keeps the early loader inside the map card instead of covering the whole page', async ({ page }) => {
+    await withSession(page);
     await holdAppCode(page);
 
     await page.goto('/home', { waitUntil: 'commit' });
@@ -637,6 +816,7 @@ test.describe('Rider first paint on a slow connection', () => {
   });
 
   test('uses the light page shell on /home when the Rider chose light mode', async ({ page }) => {
+    await withSession(page);
     await page.addInitScript(() => localStorage.setItem('thirrem-theme', 'light'));
     await holdAppCode(page);
 
