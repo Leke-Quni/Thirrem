@@ -354,6 +354,7 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .planner h1:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 .ride-request { display: flex; flex-direction: column; gap: 16px; }
 .ride-request h1 { margin: 0; text-wrap: balance; }
+.request-failed { margin: 0; font-size: 15px; line-height: 1.55; }
 .searching { margin: 0; display: flex; gap: 12px; align-items: flex-start; font-size: 15px; line-height: 1.55; }
 .searching .spinner { flex: none; margin-top: 2px; }
 .arrival-block { display: grid; gap: 10px; }
@@ -381,7 +382,9 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .request-reset { margin-top: auto; display: grid; gap: 10px; }
 .request-reset p { margin: 0; font-size: 14px; line-height: 1.5; }
 .reset-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.reset-actions .btn { flex: 1 1 150px; }
+.reset-actions .btn { flex: 1 1 150px; padding-inline: 14px; white-space: nowrap; }
+.reset-actions .btn[aria-disabled='true'] { cursor: progress; transform: none; filter: none; }
+.reset-actions .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
 
 .map-crosshair { display: none; position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 1; }
 .map-crosshair::before, .map-crosshair::after { content: ''; position: absolute; background: var(--fg); box-shadow: 0 0 0 1px var(--bg); }

@@ -7,7 +7,7 @@ import { type Coordinate, type RouteResult, RoutingService } from '../routing/ro
 import { Pacer } from '../sandbox/pacer.js';
 import { SandboxService } from '../sandbox/sandbox.service.js';
 import { approachRouted } from './approach.js';
-import { broadcast, firstToAccept, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
+import { broadcast, firstToAccept, isOpen, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
 
 /** How long to wait before each further try, when the routing server cannot be had. */
 const ROUTE_RETRY_AFTER_MS = [2_000, 5_000];
@@ -23,7 +23,7 @@ export class RideRequestService {
 
   async request(accountId: string, input: RideRequestInput): Promise<RideRequest> {
     const { made, view } = await this.sandboxes.change(accountId, (sandbox, drivers, nowMs, positionAt) => {
-      if (sandbox.rideRequest) throw new ConflictException('You already have an open Ride Request.');
+      if (sandbox.rideRequest && isOpen(sandbox.rideRequest, nowMs)) throw new ConflictException('You already have an open Ride Request.');
       const rideRequest = broadcast(randomUUID(), input, drivers, this.config.dispatch, nowMs, Math.random);
       const winner = firstToAccept(rideRequest);
       const approach = winner && { from: positionAt(winner.driverId, winner.acceptsAtMs), matchedAtMs: winner.acceptsAtMs, route: null };
@@ -37,9 +37,9 @@ export class RideRequestService {
 
   /** Looks for the matched Driver's route again, if the last search found none. */
   async retryRoute(accountId: string): Promise<void> {
-    const again = await this.sandboxes.change(accountId, (sandbox) => {
+    const again = await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
       const open = sandbox.rideRequest;
-      if (!open) throw new ConflictException('You have no open Ride Request.');
+      if (!open || !isOpen(open, nowMs)) throw new ConflictException('You have no open Ride Request.');
       if (open.approach?.route !== 'unavailable') return { sandbox, result: null };
       const rideRequest: StoredRideRequest = { ...open, approach: { ...open.approach, route: null } };
       return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };

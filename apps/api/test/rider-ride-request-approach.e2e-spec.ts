@@ -3,6 +3,7 @@ import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 import type { RideRequest, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import { afterEach, describe, expect, it } from 'vitest';
+import { searchAreas } from '../src/dispatch/quadtree.js';
 import { distanceM } from '../src/sandbox/driver-placement.js';
 import { createTestApp, ManualClock } from './support/app.js';
 import { FixedAreaRepository } from './support/fixed-area.js';
@@ -14,8 +15,11 @@ const password = 'Correct-horse-battery';
 const pickup = { lat: 42.3803, lon: 20.4308 };
 const dropoff = { lat: 42.39, lon: 20.45 };
 const north = (metres: number) => ({ ...pickup, lat: pickup.lat + metres / 111_195 });
-/** The one Driver there is to ask accepts exactly this long after the request. */
-const ACCEPT_MS = 2_000;
+const WINDOW_MS = 9_000;
+const ACCEPT_AFTER_MS = 2_000;
+/** When the only Driver there is, parked `awayM` north, accepts: soon after the search has widened far enough to ask. */
+const matchedAfterMs = (awayM: number) => searchAreas(pickup, [north(awayM)]).findIndex((area) => area.length > 0) * WINDOW_MS + ACCEPT_AFTER_MS;
+const ACCEPT_MS = matchedAfterMs(1_000);
 
 describe('The matched Driver approaching the Pickup Point', () => {
   const apps: INestApplication[] = [];
@@ -37,7 +41,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
       routing,
       pacer,
       areas: new FixedAreaRepository({ centre: pickup, stations: [station], paths: [] }),
-      config: { dispatch: { minDrivers: 1, acceptAfterMs: { min: ACCEPT_MS, max: ACCEPT_MS } } },
+      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS } } },
     });
     apps.push(app);
     const server = app.getHttpServer();
@@ -240,6 +244,17 @@ describe('The matched Driver approaching the Pickup Point', () => {
       expect(res.body.message).toMatch(/no open Ride Request/i);
     });
 
+    it('is refused once the Ride Request has failed', async () => {
+      const { server, authorization, clock, retry } = await requested();
+      await request(server).put('/rider/sandbox').set('Authorization', authorization).send({ centre: pickup, fresh: true }).expect(200);
+      await request(server).post('/rider/ride-requests').set('Authorization', authorization).send({ pickup, dropoff, vehicleType: 'xl' }).expect(201);
+      clock.advance(7 * WINDOW_MS);
+
+      const res = await retry(409);
+
+      expect(res.body.message).toMatch(/no open Ride Request/i);
+    });
+
     it('is refused without a session token', async () => {
       const { server } = await requested();
 
@@ -258,19 +273,21 @@ describe('The matched Driver approaching the Pickup Point', () => {
 
   describe('when the Sandbox stops part of the way', () => {
     const MINUTE = 60_000;
-    /** 20 km is 2,000 s of driving, longer than a Sandbox runs untouched. It stops 898 s after the match. */
+    /** 20 km is 2,000 s of driving, longer than a Sandbox runs untouched. */
     const FAR_M = 20_000;
+    /** The seconds driven when it stops, 15 minutes after the request. */
+    const DRIVEN_S = 900 - matchedAfterMs(FAR_M) / 1_000;
 
     it('carries on from where it was once resumed', async () => {
       const { after } = await requested(undefined, FAR_M);
 
       const resumed = await after(75 * MINUTE);
 
-      expect(distanceM(resumed.driver, north(FAR_M - 8_980))).toBeLessThan(1);
-      expect(resumed.rideRequest.approach).toMatchObject({ status: 'driving', etaS: 1_102 });
+      expect(distanceM(resumed.driver, north(FAR_M - DRIVEN_S * 10))).toBeLessThan(1);
+      expect(resumed.rideRequest.approach).toMatchObject({ status: 'driving', etaS: 2_000 - DRIVEN_S });
       const later = await after(100_000);
-      expect(distanceM(later.driver, north(FAR_M - 9_980))).toBeLessThan(1);
-      expect(later.rideRequest.approach).toMatchObject({ etaS: 1_002 });
+      expect(distanceM(later.driver, north(FAR_M - (DRIVEN_S + 100) * 10))).toBeLessThan(1);
+      expect(later.rideRequest.approach).toMatchObject({ etaS: 1_900 - DRIVEN_S });
     });
 
     it('keeps all the distance driven when stopped more than once', async () => {
@@ -279,8 +296,8 @@ describe('The matched Driver approaching the Pickup Point', () => {
 
       const again = await after(75 * MINUTE);
 
-      expect(again.rideRequest.approach).toMatchObject({ status: 'driving', etaS: 202 });
-      expect((await after(202_000)).rideRequest.approach).toEqual({ status: 'arrived' });
+      expect(again.rideRequest.approach).toMatchObject({ status: 'driving', etaS: 1_100 - DRIVEN_S });
+      expect((await after((1_100 - DRIVEN_S) * 1_000)).rideRequest.approach).toEqual({ status: 'arrived' });
     });
 
     it('sets off on a route that was found meanwhile only once resumed', async () => {

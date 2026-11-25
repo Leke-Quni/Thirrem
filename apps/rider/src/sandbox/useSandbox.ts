@@ -43,7 +43,7 @@ export function useSandbox(
       if (!wantsNew.current && current.status === 'ready') {
         if (current.connection === 'stopped') return { ...current, connection: 'resuming' };
         // An open Ride Request keeps the Sandbox wherever its centre moves, so it stays on screen.
-        if (current.rideRequest) return current;
+        if (current.rideRequest && current.rideRequest.status !== 'failed') return current;
       }
       return { status: 'loading' };
     });
