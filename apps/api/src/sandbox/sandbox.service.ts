@@ -27,6 +27,12 @@ export class SandboxService {
     return this.driversOf(sandbox);
   }
 
+  /** The Drivers of the account's Sandbox where they are now, or null when it has none. */
+  async drivers(accountId: string): Promise<SimulatedDriver[] | null> {
+    const sandbox = await this.sandboxes.findByAccount(accountId);
+    return sandbox && this.driversOf(sandbox);
+  }
+
   private driversOf({ area, drivers }: Sandbox): SimulatedDriver[] {
     const now = this.clock.now().getTime();
     return drivers.map((driver) => driverAt(driver, area, now));

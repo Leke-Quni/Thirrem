@@ -12,6 +12,7 @@ export interface AppConfig {
   routeRateLimit: { limit: number; windowMs: number };
   authRateLimit: { limit: number; windowMs: number };
   fareRates: FareRates;
+  live: { intervalMs: number; helloTimeoutMs: number };
 }
 
 const DEV_DATABASE_URL = 'postgres://thirrem:thirrem@localhost:5433/thirrem';
@@ -39,5 +40,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     osrmUrl: (env.OSRM_URL ?? 'https://router.project-osrm.org').replace(/\/$/, ''),
     authRateLimit: { limit: Number(env.AUTH_RATE_LIMIT ?? 10), windowMs: 60_000 },
     fareRates: FARE_RATES,
+    live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
   };
 }
