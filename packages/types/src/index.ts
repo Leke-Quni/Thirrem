@@ -53,3 +53,14 @@ export interface FareResponse {
   durationS: number;
   fares: FareQuote[];
 }
+
+export interface SimulatedDriver extends Coordinate {
+  id: string;
+  vehicleType: VehicleType;
+  /** The direction the vehicle faces, in degrees clockwise from north. */
+  heading: number;
+}
+
+export interface SandboxResponse {
+  drivers: SimulatedDriver[];
+}

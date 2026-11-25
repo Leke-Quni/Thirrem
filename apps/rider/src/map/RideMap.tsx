@@ -1,9 +1,10 @@
 import { buildMapStyle, DEFAULT_VIEW, ROUTE_SOURCE, type MapTheme } from '@thirrem/map';
-import type { Coordinate } from '@thirrem/types';
+import type { Coordinate, SimulatedDriver } from '@thirrem/types';
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
+import { driverElement } from './driver-marker';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
 import type { PinSlot, PlanPoint } from './planner';
 
@@ -11,6 +12,7 @@ interface RideMapProps {
   pickup: PlanPoint | null;
   dropoff: PlanPoint | null;
   geometry: Array<[number, number]> | null;
+  drivers: SimulatedDriver[];
   focus: { point: Coordinate; nonce: number } | null;
   onPlace(point: Coordinate): void;
   onMove(slot: PinSlot, point: Coordinate): void;
@@ -54,7 +56,7 @@ function pinElement(slot: PinSlot): HTMLButtonElement {
   return el;
 }
 
-export function RideMap({ pickup, dropoff, geometry, focus, onPlace, onMove, onReady, onFailure }: RideMapProps) {
+export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, onMove, onReady, onFailure }: RideMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<Partial<Record<PinSlot, maplibregl.Marker>>>({});
@@ -141,6 +143,13 @@ export function RideMap({ pickup, dropoff, geometry, focus, onPlace, onMove, onR
       markers.current[slot] = marker;
     });
   }, [pickup, dropoff]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance) return;
+    const cars = drivers.map(({ lat, lon, heading }) => new maplibregl.Marker({ element: driverElement(), rotation: heading, rotationAlignment: 'map' }).setLngLat([lon, lat]).addTo(instance));
+    return () => cars.forEach((car) => car.remove());
+  }, [drivers]);
 
   useEffect(() => {
     drawRoute();
