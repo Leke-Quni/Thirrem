@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import type { Coordinate } from '@thirrem/types';
-import { candidatePoints, chooseDrivers, distanceM } from './driver-placement.js';
-import { RoadService } from './road-service.js';
+import type { Coordinate, SimulatedDriver } from '@thirrem/types';
+import { SimulationClock } from '../simulation-clock/simulation-clock.js';
+import { SAME_PLACE_M } from './area.js';
+import { AreaService } from './area.service.js';
+import { distanceM } from './driver-placement.js';
+import { driverAt, sandboxDriver } from './sandbox-driver.js';
 import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
-
-const SAME_PLACE_M = 1_000;
 
 @Injectable()
 export class SandboxService {
@@ -13,11 +14,25 @@ export class SandboxService {
 
   constructor(
     private readonly sandboxes: SandboxRepository,
-    private readonly roads: RoadService,
+    private readonly areas: AreaService,
+    private readonly clock: SimulationClock,
   ) {}
 
-  /** The account's Sandbox around `centre`. Requests for one account take turns, so they never place two sets of Drivers. */
-  open(accountId: string, centre: Coordinate): Promise<Sandbox> {
+  /**
+   * The Drivers of the account's Sandbox around `centre`, where they are now.
+   * Requests for one account take turns, so they never place two sets of Drivers.
+   */
+  async open(accountId: string, centre: Coordinate): Promise<SimulatedDriver[]> {
+    const sandbox = await this.inTurn(accountId, centre);
+    return this.driversOf(sandbox);
+  }
+
+  private driversOf({ area, drivers }: Sandbox): SimulatedDriver[] {
+    const now = this.clock.now().getTime();
+    return drivers.map((driver) => driverAt(driver, area, now));
+  }
+
+  private inTurn(accountId: string, centre: Coordinate): Promise<Sandbox> {
     const previous = this.queues.get(accountId) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(() => this.reuseOrPlace(accountId, centre));
     this.queues.set(accountId, next);
@@ -30,14 +45,15 @@ export class SandboxService {
 
   private async reuseOrPlace(accountId: string, centre: Coordinate): Promise<Sandbox> {
     const existing = await this.sandboxes.findByAccount(accountId);
-    if (existing && distanceM(existing.centre, centre) <= SAME_PLACE_M) return existing;
-    const candidates = candidatePoints(centre, Math.random);
-    // Without the road service the Drivers still appear, just not exactly on a street.
-    const onRoad = await this.roads.snap(candidates.map(({ point }) => point)).catch(() => null);
-    const parked = chooseDrivers(centre, candidates, onRoad, randomUUID);
-    const headings = onRoad && (await this.roads.headings(parked).catch(() => null));
-    const sandbox = { centre, drivers: parked.map((driver, index) => ({ ...driver, heading: headings?.[index] ?? Math.floor(Math.random() * 360) })) };
+    if (existing && distanceM(existing.centre, centre) <= SAME_PLACE_M) {
+      this.areas.keepFetching(existing.area);
+      return existing;
+    }
+    const area = await this.areas.areaAt(centre);
+    const now = this.clock.now().getTime();
+    const sandbox = { centre, area, drivers: area.stations.map((_, station) => sandboxDriver(randomUUID(), station, area, now, Math.random)) };
     await this.sandboxes.save(accountId, sandbox);
+    this.areas.keepFetching(area);
     return sandbox;
   }
 }
