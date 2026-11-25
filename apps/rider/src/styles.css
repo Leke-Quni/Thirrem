@@ -385,6 +385,35 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .reset-actions .btn { flex: 1 1 150px; padding-inline: 14px; white-space: nowrap; }
 .reset-actions .btn[aria-disabled='true'] { cursor: progress; transform: none; filter: none; }
 .reset-actions .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
+.reset-actions .btn.ghost .spinner { border-color: var(--border); border-top-color: var(--accent); }
+.reset-question { font-weight: 600; text-wrap: balance; }
+.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.confirm-actions .btn { min-height: 48px; padding-inline: 8px; font-size: 14px; }
+/* The fill is how long is left to hold. It empties at once on letting go. */
+.hold-button { position: relative; isolation: isolate; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.hold-button::before { content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb, var(--accent) 45%, transparent); transform: scaleX(0); transform-origin: left; }
+.hold-button.is-holding::before { transform: scaleX(1); transition: transform var(--hold-ms) linear; }
+.hold-button:hover:not(:disabled) { transform: none; }
+.hold-button[aria-disabled='true'] { cursor: progress; }
+@media (prefers-reduced-motion: reduce) { .hold-button.is-holding::before { transition-timing-function: steps(3, end); } }
+.reset-actions .quick-cancel { box-shadow: 0 0 28px var(--glow); }
+.quick-left { padding: 3px 9px; border-radius: 999px; background: var(--on-accent); color: var(--accent-solid); font-family: var(--font-head); font-size: 15px; font-variant-numeric: tabular-nums; }
+.cancel-cost { color: var(--muted); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+/* A pause is the one outcome of a cancel the Rider cannot take back, so it alone is marked as a warning. */
+.cancel-cost.is-pause { padding: 11px 12px; border-radius: 12px; border: 1px solid var(--danger-border); background: var(--danger-bg); color: var(--danger); }
+.timeout-dialog p.cancel-cost { font-size: 14px; }
+/* The page's colours turned round, so the message stands out in both themes without reading as an error. */
+.toast-region { position: fixed; z-index: 20; right: max(20px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); left: max(20px, env(safe-area-inset-left)); display: flex; justify-content: flex-end; pointer-events: none; }
+.toast { box-sizing: border-box; width: min(400px, 100%); display: flex; align-items: flex-start; gap: 12px; padding: 16px 12px 16px 18px; border-radius: var(--radius); background: var(--fg); color: var(--bg); box-shadow: var(--shadow), 0 0 0 1px var(--accent), 0 0 48px var(--glow); pointer-events: auto; animation: toast-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.toast::before { content: ''; flex: none; box-sizing: border-box; width: 18px; height: 18px; margin-top: 3px; border-radius: 50%; border: 5px solid var(--accent-solid); }
+.toast p { flex: 1; margin: 0; font-size: 15px; font-weight: 600; line-height: 1.55; text-wrap: pretty; }
+.toast .toast-close { flex: none; width: 32px; height: 32px; margin-top: -4px; border-color: transparent; background: transparent; color: inherit; touch-action: manipulation; }
+.toast .toast-close:hover { background: color-mix(in srgb, var(--bg) 14%, transparent); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.pause-note { display: grid; gap: 4px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--danger-border); background: var(--danger-bg); font-size: 14px; line-height: 1.5; }
+.pause-note p { margin: 0; text-wrap: pretty; }
+.pause-note strong { font-family: var(--font-head); font-weight: 600; font-size: 18px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 
 .map-crosshair { display: none; position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 1; }
 .map-crosshair::before, .map-crosshair::after { content: ''; position: absolute; background: var(--fg); box-shadow: 0 0 0 1px var(--bg); }

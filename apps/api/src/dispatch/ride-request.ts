@@ -1,5 +1,6 @@
 import type { Coordinate, MatchedDriver, RideRequest, RideRequestStatus, SimulatedDriver, VehicleType } from '@thirrem/types';
 import type { StoredApproach } from './approach.js';
+import { type CancelHistory, type Cancelling, cancellation } from './cancel-limit.js';
 import { type DriveRoute, driveProgress } from './drive.js';
 import { searchAreas } from './quadtree.js';
 import { isPickedUp } from './ride.js';
@@ -66,6 +67,11 @@ export function matchedDriverId(rideRequest: StoredRideRequest, nowMs: number): 
   return acceptance(rideRequest, nowMs)?.driverId;
 }
 
+/** What cancelling it depends on. */
+export function cancelling(rideRequest: StoredRideRequest, nowMs: number): Cancelling {
+  return { matchedAtMs: acceptance(rideRequest, nowMs)?.acceptsAtMs, routeUnavailable: rideRequest.approach?.route === 'unavailable' };
+}
+
 /** Failed once the window of the last broadcast has passed with nobody accepting. */
 function statusAt(rideRequest: StoredRideRequest, nowMs: number): RideRequestStatus {
   if (acceptance(rideRequest, nowMs)) return 'matched';
@@ -83,7 +89,7 @@ export function isOpen(rideRequest: StoredRideRequest, resumedAtMs: number, nowM
 }
 
 /** The Ride Request as the Rider is told of it at `nowMs`. `driver` is the one matched, or null if none is. */
-export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedDriver | null, resumedAtMs: number, nowMs: number): RideRequest {
+export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedDriver | null, history: CancelHistory, resumedAtMs: number, nowMs: number): RideRequest {
   const { id, vehicleType, pickup, dropoff, broadcasts, approach } = rideRequest;
   // A match ends the search, so no broadcast is made after it.
   const searchedUntilMs = acceptance(rideRequest, nowMs)?.acceptsAtMs ?? nowMs;
@@ -99,5 +105,6 @@ export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedD
     offers: [...offered].map((driverId) => ({ driverId, status: driverId === driver?.id ? 'accepted' : unaccepted })),
     driver,
     approach: driver && approach ? driveProgress(approach.route, approach.matchedAtMs, resumedAtMs, nowMs) : null,
+    cancellation: status === 'failed' ? null : cancellation(cancelling(rideRequest, nowMs), history, nowMs),
   };
 }

@@ -1459,7 +1459,11 @@ test.describe('Rider Ride Request', () => {
 
   const driving = (etaS: number) => ({ status: 'driving', geometry: [[economy[1]!.lon, economy[1]!.lat], [gjakova.lon, gjakova.lat]], etaS });
 
-  const requestFor = (status: 'searching' | 'matched' | 'failed', ends: { pickup: object; dropoff: object }, approach: object = driving(240)) => ({
+  const free = { counts: null as 'quick' | 'late' | null, quickForS: null as number | null, pausesRequests: false };
+  const late = { ...free, counts: 'late' as const };
+  const pausing = { ...late, pausesRequests: true };
+
+  const requestFor = (status: 'searching' | 'matched' | 'failed', ends: { pickup: object; dropoff: object }, approach: object = driving(240), cancellation: typeof free = status === 'matched' ? late : free) => ({
     id: 'request',
     vehicleType: 'economy',
     ...ends,
@@ -1467,15 +1471,24 @@ test.describe('Rider Ride Request', () => {
     offers: economy.map((car) => ({ driverId: car.id, status: status === 'searching' ? 'offered' : status === 'matched' && car.id === driver.id ? 'accepted' : 'withdrawn' })),
     driver: status === 'matched' ? driver : null,
     approach: status === 'matched' ? approach : null,
+    cancellation: status === 'failed' ? null : cancellation,
   });
   const defaultEnds = { pickup: { lat: 42.3803, lon: 20.4308 }, dropoff: { lat: 42.3712, lon: 20.4219 } };
 
   /** The planner of a signed in Rider whose Sandbox, routes, Fares and live feed the test answers for. */
-  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null } = {}) {
+  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null, cancellation = undefined as typeof free | undefined, pausedForS = null as number | null, warningAtMs = null as number | null } = {}) {
     await page.addInitScript(() => {
       navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
     });
-    const sandbox = { asked: [] as Array<{ vehicleType: string; pickup: object; dropoff: object }>, fresh: 0, request: open ? requestFor(open, defaultEnds) : (null as ReturnType<typeof requestFor> | null) };
+    const sandbox = {
+      asked: [] as Array<{ vehicleType: string; pickup: object; dropoff: object }>,
+      fresh: 0,
+      /** The query of each cancel sent. */
+      cancels: [] as string[],
+      pausedForS,
+      warningAtMs,
+      request: open ? requestFor(open, defaultEnds, undefined, cancellation) : (null as ReturnType<typeof requestFor> | null),
+    };
     const connections: Array<import('@playwright/test').WebSocketRoute> = [];
     await page.routeWebSocket('**/rider/live', (socket) => void connections.push(socket));
     await page.route('**/rider/sandbox', (r) => {
@@ -1483,9 +1496,15 @@ test.describe('Rider Ride Request', () => {
         sandbox.fresh += 1;
         sandbox.request = null;
       }
-      return r.fulfill({ json: { drivers: cars, rideRequest: sandbox.request } });
+      return r.fulfill({ json: { drivers: cars, rideRequest: sandbox.request, requestsPausedForS: sandbox.pausedForS, cancelWarningAtMs: sandbox.warningAtMs } });
     });
-    await page.route('**/rider/ride-requests', (r) => {
+    await page.route(/\/rider\/ride-requests(\?.*)?$/, (r) => {
+      if (r.request().method() === 'DELETE') {
+        sandbox.cancels.push(new URL(r.request().url()).search);
+        if (sandbox.request?.cancellation?.pausesRequests) sandbox.pausedForS = 900;
+        sandbox.request = null;
+        return r.fulfill({ status: 204, body: '' });
+      }
       const body = r.request().postDataJSON();
       sandbox.asked.push(body);
       // As from the API, each Ride Request made has an id of its own.
@@ -1499,11 +1518,12 @@ test.describe('Rider Ride Request', () => {
     const { token } = await signup.json();
     await page.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
     await page.goto('/home');
-    const report = (status: 'searching' | 'matched' | 'failed', approach?: object) => {
-      sandbox.request = requestFor(status, sandbox.request!, approach);
-      connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: sandbox.request } }));
+    const send = () => connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: sandbox.request, requestsPausedForS: sandbox.pausedForS, cancelWarningAtMs: sandbox.warningAtMs } }));
+    const report = (status: 'searching' | 'matched' | 'failed', approach?: object, counting?: typeof free) => {
+      sandbox.request = requestFor(status, sandbox.request!, approach, counting);
+      send();
     };
-    return { sandbox, connections, report };
+    return { sandbox, connections, report, send };
   }
 
   const placeBothPins = async (page: Page) => {
@@ -1799,10 +1819,342 @@ test.describe('Rider Ride Request', () => {
 
       const panel = (await page.locator('.planner').boundingBox())!;
       for (const part of ['.arrival', '.driver-card', '.driver-plate', '.request-summary', '.request-reset .btn']) {
-        const box = (await page.locator(part).boundingBox())!;
-        expect(box.x).toBeGreaterThanOrEqual(panel.x);
-        expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
+        for (const element of await page.locator(part).all()) {
+          const box = (await element.boundingBox())!;
+          expect(box.x).toBeGreaterThanOrEqual(panel.x);
+          expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
+        }
       }
+    });
+  }
+
+  const cancelButton = (page: Page) => page.getByRole('button', { name: 'Cancel Ride Request' });
+  const confirmation = (page: Page) => page.locator('.cancel-confirm');
+  const keepDriver = (page: Page) => page.getByRole('button', { name: 'Keep my Driver' });
+  const holdButton = (page: Page) => page.getByRole('button', { name: 'Hold to cancel' });
+  /** Presses and holds long enough to cancel. */
+  const hold = (page: Page) => holdButton(page).click({ delay: 1_700 });
+
+  test('cancels at once while searching, back to the planner with the pins kept', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'searching' });
+
+    await cancelButton(page).click();
+
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeFocused();
+    await expect(ask(page)).toBeEnabled();
+    await expect(marked(page, 'offered')).toHaveCount(0);
+    expect(sandbox.cancels).toEqual(['']);
+  });
+
+  test('asks in one line once a late cancel, with the choices side by side', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'matched' });
+    await cancelButton(page).click();
+
+    await expect(confirmation(page).locator('p')).toHaveText(['Arta K. is 4 min away. Cancel anyway?']);
+    await expect(keepDriver(page)).toBeFocused();
+    const [keep, cancel] = [(await keepDriver(page).boundingBox())!, (await holdButton(page).boundingBox())!];
+    expect(cancel.y).toBe(keep.y);
+    expect(cancel.x).toBeGreaterThan(keep.x + keep.width);
+    await keepDriver(page).click();
+    await expect(cancelButton(page)).toBeFocused();
+    await cancelButton(page).click();
+    await page.keyboard.press('Escape');
+    await expect(cancelButton(page)).toBeFocused();
+    expect(sandbox.cancels).toEqual([]);
+  });
+
+  test('cancels only once the button has been held down', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'matched' });
+    await cancelButton(page).click();
+
+    await holdButton(page).click({ delay: 300 });
+    // Longer than a whole hold, in case letting go did not end it.
+    await page.waitForTimeout(1_700);
+    expect(sandbox.cancels).toEqual([]);
+    await hold(page);
+
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeFocused();
+    await expect(marked(page, 'matched')).toHaveCount(0);
+    expect(sandbox.cancels).toEqual(['']);
+  });
+
+  test('ends the hold when the pointer slides off the button', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'matched' });
+    await cancelButton(page).click();
+    const box = (await holdButton(page).boundingBox())!;
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 40, box.y - 40);
+    await page.waitForTimeout(1_700);
+    await page.mouse.up();
+
+    expect(sandbox.cancels).toEqual([]);
+  });
+
+  for (const key of ['Enter', 'Space']) {
+    test(`cancels by holding ${key}, and not by pressing it once`, async ({ page }) => {
+      const { sandbox } = await openPlanner(page, { open: 'matched' });
+      await cancelButton(page).click();
+      await holdButton(page).focus();
+
+      await page.keyboard.press(key);
+      await page.waitForTimeout(1_700);
+      expect(sandbox.cancels).toEqual([]);
+      await page.keyboard.down(key);
+      await page.waitForTimeout(1_700);
+      await page.keyboard.up(key);
+
+      await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeVisible();
+      expect(sandbox.cancels).toEqual(['']);
+    });
+  }
+
+  test('cancels on a single activation from assistive technology, which cannot hold', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'matched' });
+    await cancelButton(page).click();
+
+    await holdButton(page).dispatchEvent('click');
+
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeVisible();
+    expect(sandbox.cancels).toEqual(['']);
+  });
+
+  test('says the Driver is waiting once they have arrived', async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    await cancelButton(page).click();
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched', { status: 'arrived' });
+
+    await expect(confirmation(page).locator('p')).toHaveText(['Arta K. is waiting for you. Cancel anyway?']);
+  });
+
+  const quick = (quickForS: number) => ({ ...free, counts: 'quick' as const, quickForS });
+  const quickButton = (page: Page) => page.getByRole('button', { name: /^Quick cancel/ });
+
+  test('counts down on the button while a cancel is quick, then offers an ordinary cancel', async ({ page }) => {
+    const { report, connections } = await openPlanner(page, { open: 'matched', cancellation: quick(21) });
+    await expect(quickButton(page)).toHaveText('Quick cancel 0:21');
+    await expect(cancelButton(page)).toHaveCount(0);
+    await expect(quickButton(page)).toHaveClass(/primary/);
+    await expect.poll(() => connections.length).toBe(1);
+
+    report('matched', undefined, quick(5));
+    await expect(quickButton(page)).toHaveText('Quick cancel 0:05');
+
+    report('matched', undefined, late);
+    await expect(cancelButton(page)).toBeVisible();
+    await expect(quickButton(page)).toHaveCount(0);
+  });
+
+  test('cancels quickly in one click', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'matched', cancellation: quick(21) });
+
+    await quickButton(page).click();
+
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeFocused();
+    expect(sandbox.cancels).toEqual(['']);
+  });
+
+  test('still warns before a quick cancel that pauses Ride Requests', async ({ page }) => {
+    const { sandbox } = await openPlanner(page, { open: 'matched', cancellation: { ...quick(21), pausesRequests: true } });
+
+    await quickButton(page).click();
+
+    await expect(confirmation(page).locator('.cancel-cost.is-pause')).toHaveText('Cancelling locks you for 15 minutes.');
+    expect(sandbox.cancels).toEqual([]);
+    await hold(page);
+    await expect(page.locator('.pause-note')).toBeVisible();
+    expect(sandbox.cancels).toEqual(['?pause=accepted']);
+  });
+
+  test('warns before a cancel that pauses Ride Requests, then shows how long is left', async ({ page }) => {
+    const { sandbox, connections, send } = await openPlanner(page, { open: 'matched', cancellation: pausing });
+    await cancelButton(page).click();
+    await expect(confirmation(page).locator('.cancel-cost.is-pause')).toHaveText('Cancelling locks you for 15 minutes.');
+
+    await hold(page);
+
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeFocused();
+    expect(sandbox.cancels).toEqual(['?pause=accepted']);
+    await expect(page.locator('.pause-note')).toContainText('15:00');
+    await expect(ask(page)).toBeDisabled();
+    await expect.poll(() => connections.length).toBe(1);
+
+    sandbox.pausedForS = 61;
+    send();
+    await expect(page.locator('.pause-note')).toContainText('1:01');
+
+    sandbox.pausedForS = null;
+    send();
+    await expect(page.locator('.pause-note')).toHaveCount(0);
+    await expect(ask(page)).toBeEnabled();
+  });
+
+  const toast = (page: Page) => page.locator('.toast');
+
+  test('shows a message that can be closed once one more cancel would pause Ride Requests', async ({ page }) => {
+    const { sandbox, connections, send } = await openPlanner(page);
+    await placeBothPins(page);
+    await expect.poll(() => connections.length).toBe(1);
+    await expect(toast(page)).toHaveCount(0);
+
+    sandbox.warningAtMs = 1_000;
+    send();
+
+    await expect(page.getByRole('status').filter({ hasText: 'If you keep cancelling your Ride Requests, you’ll be locked from requesting for a while.' })).toBeVisible();
+    await expect(ask(page)).toBeEnabled();
+    await toast(page).getByRole('button', { name: 'Close message' }).click();
+    await expect(toast(page)).toHaveCount(0);
+    // The same warning is reported every second, and stays closed.
+    send();
+    sandbox.warningAtMs = 2_000;
+    send();
+    await expect(toast(page)).toBeVisible();
+    sandbox.pausedForS = 900;
+    send();
+    await expect(toast(page)).toHaveCount(0);
+  });
+
+  /** A planner showing the message. */
+  async function openWarned(page: Page) {
+    const planner = await openPlanner(page);
+    await expect.poll(() => planner.connections.length).toBe(1);
+    await expect(page.locator('.map-status')).toContainText('nearby');
+    planner.sandbox.warningAtMs = 1_000;
+    planner.send();
+    await expect(toast(page)).toBeVisible();
+    return planner;
+  }
+
+  test('takes the message away by itself after 8 seconds', async ({ page }) => {
+    await openWarned(page);
+
+    await page.waitForTimeout(6_000);
+    await expect(toast(page)).toBeVisible();
+
+    await expect(toast(page)).toHaveCount(0, { timeout: 4_000 });
+  });
+
+  for (const [how, attend, leave] of [
+    ['the pointer is on it', (page: Page) => toast(page).hover(), (page: Page) => page.mouse.move(5, 5)],
+    ['it has focus', (page: Page) => toast(page).getByRole('button').focus(), (page: Page) => toast(page).getByRole('button').blur()],
+  ] as const) {
+    test(`keeps the message while ${how}`, async ({ page }) => {
+      await openWarned(page);
+
+      await attend(page);
+      await page.waitForTimeout(9_500);
+      await expect(toast(page)).toBeVisible();
+      await leave(page);
+
+      await expect(toast(page)).toHaveCount(0, { timeout: 10_000 });
+    });
+  }
+
+  test('does not show the message again after a reload', async ({ page }) => {
+    const { connections } = await openPlanner(page, { warningAtMs: 1_000 });
+    await expect.poll(() => connections.length).toBe(1);
+    await placeBothPins(page);
+
+    await expect(ask(page)).toBeEnabled();
+    await expect(toast(page)).toHaveCount(0);
+  });
+
+  for (const width of [320, 1280]) {
+    test(`keeps the message on screen at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      const { sandbox, connections, send } = await openPlanner(page);
+      await expect.poll(() => connections.length).toBe(1);
+      await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeVisible();
+      await expect(page.locator('.map-status')).toContainText('nearby');
+
+      sandbox.warningAtMs = 1_000;
+      send();
+
+      await expect(toast(page)).toBeInViewport({ ratio: 1 });
+    });
+  }
+
+  test('says Ride Requests are still paused after a reload', async ({ page }) => {
+    await openPlanner(page, { pausedForS: 600 });
+    await placeBothPins(page);
+
+    await expect(page.getByText('Ride Requests are paused after too many cancellations.')).toBeVisible();
+    await expect(page.locator('.pause-note')).toContainText('10:00');
+    await expect(ask(page)).toBeDisabled();
+  });
+
+  test('shows the warning if the cancel turns out to pause Ride Requests, and only then accepts the pause', async ({ page }) => {
+    await openPlanner(page, { open: 'searching' });
+    const sent: string[] = [];
+    await page.route(/\/rider\/ride-requests(\?.*)?$/, (r) => {
+      sent.push(new URL(r.request().url()).search);
+      if (sent.length === 1) return r.fulfill({ status: 409, json: { code: 'CANCEL_WOULD_PAUSE', message: 'Cancelling now would pause your Ride Requests for 15 minutes.' } });
+      return r.fulfill({ status: 204, body: '' });
+    });
+
+    await cancelButton(page).click();
+
+    await expect(confirmation(page).locator('.cancel-cost.is-pause')).toHaveText('Cancelling locks you for 15 minutes.');
+    await hold(page);
+    await expect(page.getByRole('heading', { name: 'Plan your ride' })).toBeVisible();
+    expect(sent).toEqual(['', '?pause=accepted']);
+  });
+
+  test('says why the Ride Request could not be cancelled and keeps it', async ({ page }) => {
+    await openPlanner(page, { open: 'searching' });
+    await page.route(/\/rider\/ride-requests(\?.*)?$/, (r) => r.fulfill({ status: 429, json: { message: 'Too many Ride Requests. Please wait a minute and try again.' } }));
+
+    await cancelButton(page).click();
+
+    await expect(page.getByRole('alert')).toContainText(/too many ride requests/i);
+    await expect(cancelButton(page)).toBeEnabled();
+  });
+
+  test('warns that starting a new Sandbox counts as a cancel', async ({ page }) => {
+    await openPlanner(page, { open: 'matched', cancellation: pausing });
+
+    await page.getByRole('button', { name: 'Start a new Sandbox' }).click();
+
+    const group = page.getByRole('group', { name: /start a new sandbox/i });
+    await expect(group.locator('.cancel-cost.is-pause')).toHaveText('Cancelling locks you for 15 minutes.');
+    await expect(group.getByRole('button', { name: 'Start new and pause' })).toBeVisible();
+  });
+
+  test('warns in the timed out dialog that a new Sandbox counts as a cancel', async ({ page }) => {
+    const { connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+
+    await connections.at(-1)!.close({ code: 4410 });
+
+    await expect(page.getByRole('dialog')).toContainText('Starting a new one cancels your Ride Request.');
+  });
+
+  for (const width of [320, 1280]) {
+    test(`keeps the cancel warning and the pause inside the panel at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openPlanner(page, { open: 'matched', cancellation: pausing });
+      const inside = async (parts: string[]) => {
+        const panel = (await page.locator('.planner').boundingBox())!;
+        for (const part of parts) {
+          for (const element of await page.locator(part).all()) {
+            const box = (await element.boundingBox())!;
+            expect(box.x).toBeGreaterThanOrEqual(panel.x);
+            expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
+          }
+        }
+      };
+      await expect(cancelButton(page)).toBeVisible();
+      await inside(['.request-reset .btn']);
+      await cancelButton(page).click();
+      await inside(['.cancel-cost', '.request-reset .btn']);
+
+      await hold(page);
+
+      await expect(page.locator('.pause-note')).toBeVisible();
+      await inside(['.pause-note']);
     });
   }
 
@@ -1833,5 +2185,12 @@ test.describe('Rider Ride Request', () => {
     await real.getByRole('button', { name: 'Find the route again' }).click();
     await expect(real.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
     await expect(real.getByRole('button', { name: 'Find the route again' })).toBeVisible({ timeout: 15_000 });
+
+    // With no route to be had, cancelling is no fault of the Rider's, so it is done without asking.
+    await cancelButton(real).click();
+
+    await expect(real.getByRole('heading', { name: 'Plan your ride' })).toBeVisible();
+    await expect(marked(real, 'matched')).toHaveCount(0);
+    await expect(ask(real)).toBeEnabled();
   });
 });

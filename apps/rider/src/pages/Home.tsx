@@ -13,8 +13,10 @@ import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
 import { useFareQuote } from '../map/useFareQuote';
 import { useRoute } from '../map/useRoute';
+import { CancelWarningToast } from '../ride-request/CancelWarningToast';
 import { RidePanel } from '../ride-request/RidePanel';
 import { RideRequestPanel } from '../ride-request/RideRequestPanel';
+import { useCancelWarning } from '../ride-request/useCancelWarning';
 import { useRequestRide } from '../ride-request/useRequestRide';
 import { sandboxCentre } from '../sandbox/sandbox-centre';
 import { SandboxStatus } from '../sandbox/SandboxStatus';
@@ -38,13 +40,15 @@ export function Home() {
   const { state: fare, retry: retryFare } = useFareQuote(plan.pickup, plan.dropoff);
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
-  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
+  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, cancelled, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
   // A failed Ride Request the Rider has moved on from is not shown again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
   const ride = sandbox.status === 'ready' ? sandbox.ride : null;
   /** What the Rider is doing, if anything: asking for a Ride, or on one. */
   const journey = ride ?? rideRequest;
+  const pausedForS = sandbox.status === 'ready' ? sandbox.requestsPausedForS : null;
+  const warning = useCancelWarning(sandbox.status === 'ready' ? sandbox.cancelWarningAtMs : undefined, Boolean(pausedForS));
   const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
   const askedHere = useRef(false);
   const { pending, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
@@ -137,6 +141,11 @@ export function Home() {
             fare={fare}
             focusTitle={askedHere.current}
             onRouting={routing}
+            onCancelled={(paused) => {
+              askedHere.current = false;
+              droppedRequest.current = true;
+              cancelled(paused);
+            }}
             onStartNew={startNewRide}
             retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
             onChange={() => {
@@ -165,7 +174,7 @@ export function Home() {
               retryFare();
             }}
             focusTitle={droppedRequest.current}
-            request={{ ready: sandboxLive, pending, error: requestError, onRequest: request }}
+            request={{ ready: sandboxLive, pending, error: requestError, pausedForS, onRequest: request }}
           />
         )}
         <div className="map-card">
@@ -201,6 +210,7 @@ export function Home() {
           )}
         </div>
       </main>
+      <CancelWarningToast shown={warning.shown} onClose={warning.close} />
     </div>
   );
 }

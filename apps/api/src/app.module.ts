@@ -10,6 +10,8 @@ import { DatabaseService } from './database/database.service.js';
 import { RiderFareController } from './fares/rider-fare.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
+import { CancelHistoryRepository } from './dispatch/cancel-history.repository.js';
+import { InMemoryCancelHistoryRepository } from './dispatch/in-memory-cancel-history.repository.js';
 import { RideRequestService } from './dispatch/ride-request.service.js';
 import { RiderRideRequestController } from './dispatch/rider-ride-request.controller.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
@@ -62,6 +64,7 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     SandboxService,
     RideRequestRateLimitGuard,
     RideRequestService,
+    { provide: CancelHistoryRepository, useClass: InMemoryCancelHistoryRepository },
     { provide: RiderActivity, useExisting: SandboxService },
     RiderLiveGateway,
     SandboxSweeper,

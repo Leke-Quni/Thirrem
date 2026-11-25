@@ -28,3 +28,17 @@ export async function findRouteAgain(to: DriveTo): Promise<void> {
   const body = await response.json().catch(() => ({}));
   throw new ApiError(body.message ?? 'The route could not be asked for. Please try again.', response.status);
 }
+
+/** The API refused a cancel that would pause Ride Requests, as the pause had not been agreed to. */
+export class CancelWouldPauseError extends ApiError {}
+
+export async function cancelRideRequest(pauseAccepted: boolean): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/rider/ride-requests${pauseAccepted ? '?pause=accepted' : ''}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+  });
+  if (response.ok) return;
+  const body = await response.json().catch(() => ({}));
+  const Failure = body.code === 'CANCEL_WOULD_PAUSE' ? CancelWouldPauseError : ApiError;
+  throw new Failure(body.message ?? 'Your Ride Request could not be cancelled. Please try again.', response.status);
+}
