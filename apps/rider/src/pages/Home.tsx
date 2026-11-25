@@ -7,6 +7,7 @@ import { RouteLoader } from '../components/RouteLoader';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
+import { approachRoute } from '../map/approach-route';
 import { carMarks } from '../map/car-marks';
 import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
@@ -36,7 +37,7 @@ export function Home() {
   const { state: fare, retry: retryFare } = useFareQuote(plan.pickup, plan.dropoff);
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
-  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
+  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
   // A failed Ride Request the Rider has moved on from is not shown again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
@@ -47,6 +48,7 @@ export function Home() {
     requested(made);
   });
   const marks = useMemo(() => carMarks(rideRequest), [rideRequest]);
+  const approach = useMemo(() => approachRoute(rideRequest), [rideRequest]);
   const droppedRequest = useRef(false);
 
   // After a reload the pins and Vehicle Type are put back as the shown Ride Request has them, whatever else moved them.
@@ -122,6 +124,7 @@ export function Home() {
             dropoff={plan.dropoff}
             fare={fare}
             focusTitle={askedHere.current}
+            onRouting={routing}
             onStartNew={() => {
               askedHere.current = false;
               droppedRequest.current = true;
@@ -162,6 +165,7 @@ export function Home() {
             pickup={plan.pickup}
             dropoff={plan.dropoff}
             geometry={route.status === 'ready' ? route.route.geometry : null}
+            approach={approach}
             focus={focus}
             drivers={'drivers' in sandbox ? sandbox.drivers : NO_DRIVERS}
             marks={marks}

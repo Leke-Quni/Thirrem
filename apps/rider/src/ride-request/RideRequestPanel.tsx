@@ -6,6 +6,7 @@ import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
 import { useStreetName } from '../map/useStreetName';
 import { VEHICLE_TYPE_NAMES } from '../map/VehicleTypeList';
+import { ArrivalStatus } from './ArrivalStatus';
 
 interface RideRequestPanelProps {
   rideRequest: RideRequest;
@@ -13,6 +14,8 @@ interface RideRequestPanelProps {
   dropoff: PlanPoint | null;
   fare: FareState;
   onStartNew(): void;
+  /** The API is looking for the matched Driver's route again. */
+  onRouting(): void;
   /** For a failed Ride Request: asking for it again, or going back to the planner to change it. */
   retry: { ready: boolean; pending: boolean; error: string | null; onRetry(): void };
   onChange(): void;
@@ -51,8 +54,8 @@ function Point({ label, point }: { label: string; point: PlanPoint | null }) {
   );
 }
 
-export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, retry, onChange, focusTitle }: RideRequestPanelProps) {
-  const { status, driver, offers, vehicleType } = rideRequest;
+export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, onRouting, retry, onChange, focusTitle }: RideRequestPanelProps) {
+  const { status, driver, approach, offers, vehicleType } = rideRequest;
   const failed = status === 'failed';
   const type = VEHICLE_TYPE_NAMES[vehicleType];
   const quote = fare.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
@@ -77,6 +80,16 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
       <h1 id="ride-request-title" ref={title} tabIndex={-1}>
         {driver ? 'Your Driver' : failed ? 'Ride Request not accepted' : 'Finding your Driver'}
       </h1>
+      {approach && (
+        <ArrivalStatus
+          approach={approach}
+          onRouting={() => {
+            // The button pressed is about to go, so focus is moved somewhere that stays.
+            title.current?.focus({ preventScroll: true });
+            onRouting();
+          }}
+        />
+      )}
       <div role="status">
         {driver ? (
           <>
@@ -98,7 +111,7 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
           </p>
         )}
       </div>
-      {driver && <p className="request-note">A simulated Driver. Driving to your Pickup Point is not part of the demo yet.</p>}
+      {driver && <p className="request-note">A simulated Driver. Getting picked up is not part of the demo yet.</p>}
 
       <dl className="request-summary">
         <Point label="Pickup Point" point={pickup} />

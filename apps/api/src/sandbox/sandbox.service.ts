@@ -3,6 +3,7 @@ import { ConflictException, Inject, Injectable, ServiceUnavailableException } fr
 import type { Coordinate, SandboxBusyResponse, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
+import { approachPosition, resumedApproach } from '../dispatch/approach.js';
 import { isOpen, matchedDriverId, rideRequestView } from '../dispatch/ride-request.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
@@ -11,6 +12,7 @@ import { distanceM } from './driver-placement.js';
 import { RiderActivity } from './rider-activity.js';
 import { driverAt, resumedDriver, sandboxDriver } from './sandbox-driver.js';
 import { discardCutoffMs, runningCutoffMs, sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
+import type { PathPosition } from './road-path.js';
 import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
 
 const BUSY: SandboxBusyResponse = { code: 'SANDBOX_LIMIT', message: 'All Sandboxes are busy right now. Please try again in a few minutes.' };
@@ -58,15 +60,30 @@ export class SandboxService extends RiderActivity {
     return status === 'running' ? this.view(sandbox, now) : 'stopped';
   }
 
-  /** Changes the account's running Sandbox, which counts as activity. `change` is given its Drivers where they are now. */
-  change<T>(accountId: string, change: (sandbox: Sandbox, drivers: SimulatedDriver[], nowMs: number) => { sandbox: Sandbox; result: T }): Promise<T> {
+  /**
+   * Changes the account's running Sandbox, which counts as activity.
+   * `change` is given its Drivers where they are now, and can ask where one will be later if nothing else happens.
+   */
+  change<T>(
+    accountId: string,
+    change: (sandbox: Sandbox, drivers: SimulatedDriver[], nowMs: number, positionAt: (driverId: string, atMs: number) => PathPosition) => { sandbox: Sandbox; result: T },
+  ): Promise<T> {
     return this.inTurn(accountId, async () => {
       const found = await this.sandboxes.findByAccount(accountId);
       const now = this.clock.now().getTime();
       if (!found || sandboxStatus(found.lastActiveMs, now) !== 'running') throw new ConflictException('Your Sandbox is not running. Resume it, then try again.');
-      const { sandbox, result } = change(this.active(found, now), this.view(found, now).drivers, now);
+      const positionAt = (driverId: string, atMs: number) => driverAt(found.drivers.find((driver) => driver.id === driverId)!, found.area, found.resumedAtMs, atMs);
+      const { sandbox, result } = change(this.active(found, now), this.view(found, now).drivers, now, positionAt);
       await this.sandboxes.save(accountId, sandbox);
       return result;
+    });
+  }
+
+  /** Changes the account's Sandbox, if it still has one, with what the server found out for it. The Rider did nothing, so it is not activity. */
+  amend(accountId: string, amend: (sandbox: Sandbox, nowMs: number) => Sandbox): Promise<void> {
+    return this.inTurn(accountId, async () => {
+      const sandbox = await this.sandboxes.findByAccount(accountId);
+      if (sandbox) await this.sandboxes.save(accountId, amend(sandbox, this.clock.now().getTime()));
     });
   }
 
@@ -78,8 +95,13 @@ export class SandboxService extends RiderActivity {
     const matchedId = rideRequest && matchedDriverId(rideRequest, nowMs);
     const matched = drivers.find((driver) => driver.id === matchedId);
     return {
-      drivers: drivers.map((driver) => ({ ...driverAt(driver, area, resumedAtMs, nowMs), available: driver !== matched })),
-      rideRequest: rideRequest ? rideRequestView(rideRequest, matched ? { id: matched.id, ...matched.profile } : null, nowMs) : null,
+      drivers: drivers.map((driver) => ({
+        ...driverAt(driver, area, resumedAtMs, nowMs),
+        // The matched Driver has left its path for the Pickup Point.
+        ...(driver === matched && rideRequest?.approach && approachPosition(rideRequest.approach, resumedAtMs, nowMs)),
+        available: driver !== matched,
+      })),
+      rideRequest: rideRequest ? rideRequestView(rideRequest, matched ? { id: matched.id, ...matched.profile } : null, resumedAtMs, nowMs) : null,
     };
   }
 
@@ -121,6 +143,8 @@ export class SandboxService extends RiderActivity {
     if (sandboxStatus(sandbox.lastActiveMs, nowMs) === 'running') return { ...sandbox, lastActiveMs: nowMs };
     const stopped = stoppedAtMs(sandbox.lastActiveMs);
     const drivers = sandbox.drivers.map((driver) => resumedDriver(driver, sandbox.area, sandbox.resumedAtMs, stopped, nowMs));
-    return { ...sandbox, drivers, lastActiveMs: nowMs, resumedAtMs: nowMs };
+    const open = sandbox.rideRequest;
+    const rideRequest = open?.approach && { ...open, approach: resumedApproach(open.approach, sandbox.resumedAtMs, stopped, nowMs) };
+    return { ...sandbox, drivers, rideRequest: rideRequest ?? open, lastActiveMs: nowMs, resumedAtMs: nowMs };
   }
 }

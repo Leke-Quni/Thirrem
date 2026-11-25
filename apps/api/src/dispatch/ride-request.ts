@@ -1,4 +1,5 @@
 import type { Coordinate, MatchedDriver, RideRequest, RideRequestStatus, SimulatedDriver, VehicleType } from '@thirrem/types';
+import { approachView, type StoredApproach } from './approach.js';
 import { searchAreas } from './quadtree.js';
 
 export interface RideRequestInput {
@@ -12,6 +13,8 @@ export interface StoredRideRequest extends RideRequestInput {
   id: string;
   /** Its broadcasts, narrowest first. Each follows the one before once that one's accept window has passed. */
   broadcasts: Broadcast[];
+  /** That of the Driver due to accept first, if any will. It starts as that Driver is matched. */
+  approach?: StoredApproach;
 }
 
 interface Broadcast {
@@ -46,6 +49,9 @@ function acceptance({ broadcasts }: StoredRideRequest, nowMs: number): { driverI
   return accepted.sort((a, b) => a.acceptsAtMs - b.acceptsAtMs)[0];
 }
 
+/** The acceptance that will match it, if nothing else happens. */
+export const firstToAccept = (rideRequest: StoredRideRequest) => acceptance(rideRequest, Infinity);
+
 /** The Driver who accepted first, if any has by `nowMs`. */
 export function matchedDriverId(rideRequest: StoredRideRequest, nowMs: number): string | undefined {
   return acceptance(rideRequest, nowMs)?.driverId;
@@ -62,8 +68,8 @@ export function isOpen(rideRequest: StoredRideRequest, nowMs: number): boolean {
 }
 
 /** The Ride Request as the Rider is told of it at `nowMs`. `driver` is the one matched, or null if none is. */
-export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedDriver | null, nowMs: number): RideRequest {
-  const { id, vehicleType, pickup, dropoff, broadcasts } = rideRequest;
+export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedDriver | null, resumedAtMs: number, nowMs: number): RideRequest {
+  const { id, vehicleType, pickup, dropoff, broadcasts, approach } = rideRequest;
   // A match ends the search, so no broadcast is made after it.
   const searchedUntilMs = acceptance(rideRequest, nowMs)?.acceptsAtMs ?? nowMs;
   const offered = new Set(broadcasts.filter(({ startsAtMs }) => startsAtMs <= searchedUntilMs).flatMap(({ offers }) => offers.map(({ driverId }) => driverId)));
@@ -77,5 +83,6 @@ export function rideRequestView(rideRequest: StoredRideRequest, driver: MatchedD
     status,
     offers: [...offered].map((driverId) => ({ driverId, status: driverId === driver?.id ? 'accepted' : unaccepted })),
     driver,
+    approach: driver && approach ? approachView(approach, resumedAtMs, nowMs) : null,
   };
 }

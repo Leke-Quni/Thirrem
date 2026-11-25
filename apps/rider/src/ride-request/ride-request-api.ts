@@ -13,3 +13,14 @@ export async function requestRide(pickup: Coordinate, dropoff: Coordinate, vehic
   if (!response.ok) throw new ApiError(body.message ?? 'Your Ride could not be requested. Please try again.', response.status);
   return body as RideRequest;
 }
+
+/** Looks for the matched Driver's route again, after none could be found. */
+export async function findRouteAgain(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/rider/ride-requests/approach`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+  });
+  if (response.ok) return;
+  const body = await response.json().catch(() => ({}));
+  throw new ApiError(body.message ?? 'The route could not be asked for. Please try again.', response.status);
+}

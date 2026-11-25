@@ -22,7 +22,7 @@ export function useSandbox(
   centre: Coordinate | null,
   pickup: Coordinate | null,
   dropoff: Coordinate | null,
-): { state: SandboxState; retry(): void; startNew(): void; requested(rideRequest: RideRequest): void } {
+): { state: SandboxState; retry(): void; startNew(): void; requested(rideRequest: RideRequest): void; routing(): void } {
   const [placedAt, setPlacedAt] = useState<Coordinate | null>(null);
   const [state, setState] = useState<SandboxState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -89,11 +89,17 @@ export function useSandbox(
   /** Shows a Ride Request just made, without waiting for the live feed to report it. */
   const requested = useCallback((rideRequest: RideRequest) => setState((current) => (current.status === 'ready' ? { ...current, rideRequest } : current)), []);
 
+  /** Shows that the matched Driver's route is being looked for again, ahead of the live feed. */
+  const routing = useCallback(
+    () => setState((current) => (current.status === 'ready' && current.rideRequest ? { ...current, rideRequest: { ...current.rideRequest, approach: { status: 'routing' } } } : current)),
+    [],
+  );
+
   // A pin change is the Rider coming back, so it opens a Sandbox that is not running.
   const notRunning = useRef(false);
   notRunning.current = hasTimedOut(state) || state.status === 'busy';
   useEffect(() => {
     if (notRunning.current) retry();
   }, [pickup, dropoff, retry]);
-  return { state, retry, startNew, requested };
+  return { state, retry, startNew, requested, routing };
 }
