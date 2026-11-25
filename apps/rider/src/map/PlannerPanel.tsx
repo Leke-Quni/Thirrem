@@ -1,15 +1,19 @@
-import type { PlaceResult } from '@thirrem/types';
+import type { PlaceResult, VehicleType } from '@thirrem/types';
 import { formatDistance, formatDuration } from './format';
 import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
 import { pinText, type StreetLookup } from './pin-text';
 import type { PinSlot, Plan, PlanPoint } from './planner';
+import type { FareState } from './useFareQuote';
 import type { RouteState } from './useRoute';
 import { useStreetName } from './useStreetName';
+import { VehicleTypeList } from './VehicleTypeList';
 
 interface PlannerPanelProps {
   plan: Plan;
   route: RouteState;
+  fare: FareState;
+  vehicleType: VehicleType;
   mapReady: boolean;
   locating: boolean;
   locateMessage: string | null;
@@ -18,6 +22,8 @@ interface PlannerPanelProps {
   onRemove(slot: PinSlot): void;
   onChoosePlace(slot: PinSlot, place: PlaceResult): void;
   onRetry(): void;
+  onChooseVehicleType(type: VehicleType): void;
+  onRetryFare(): void;
 }
 
 const SLOTS: Array<{ slot: PinSlot; label: string }> = [
@@ -37,7 +43,7 @@ function Glyph({ slot }: { slot: PinSlot }) {
   );
 }
 
-export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry }: PlannerPanelProps) {
+export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry, onChooseVehicleType, onRetryFare }: PlannerPanelProps) {
   const near = plan.pickup ?? plan.dropoff;
   const streets: Record<PinSlot, StreetLookup> = { pickup: useStreetName(plan.pickup), dropoff: useStreetName(plan.dropoff) };
   return (
@@ -92,7 +98,7 @@ export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, o
       </p>
 
       <div className="route-summary" aria-live="polite">
-        {route.status === 'idle' && <p className="route-hint">The route, distance and time appear once both pins are placed.</p>}
+        {route.status === 'idle' && <p className="route-hint">The route, distance, time and Fares appear once both pins are placed.</p>}
         {route.status === 'loading' && (
           <div className="route-skeleton" role="status" aria-label="Loading the route…">
             <span /> <span />
@@ -119,6 +125,16 @@ export function PlannerPanel({ plan, route, mapReady, locating, locateMessage, o
           </div>
         )}
       </div>
+
+      <VehicleTypeList fare={fare} selected={vehicleType} onSelect={onChooseVehicleType} />
+      {fare.status === 'error' && route.status !== 'error' && (
+        <div className="form-error fare-error" role="alert">
+          <span>{fare.message}</span>
+          <button type="button" className="btn ghost retry" onClick={onRetryFare}>
+            Try again
+          </button>
+        </div>
+      )}
     </section>
   );
 }

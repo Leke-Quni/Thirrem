@@ -294,8 +294,20 @@ test.describe('Rider ride planner', () => {
     ],
   };
 
+  const quote = {
+    distanceM: 1850,
+    durationS: 241,
+    fares: [
+      { vehicleType: 'economy', amountCents: 202, currency: 'EUR' },
+      { vehicleType: 'comfort', amountCents: 279, currency: 'EUR' },
+      { vehicleType: 'xl', amountCents: 364, currency: 'EUR' },
+      { vehicleType: 'electric', amountCents: 279, currency: 'EUR' },
+    ],
+  };
+
   async function signUpAndOpenPlanner(page: import('@playwright/test').Page, street: string | null = null) {
     await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street } }));
+    await page.route('**/rider/fare', (r) => r.fulfill({ json: quote }));
     await page.goto('/signup');
     await page.getByLabel('Email').fill(newEmail());
     await page.getByLabel('Password', { exact: true }).fill(password);
@@ -303,6 +315,111 @@ test.describe('Rider ride planner', () => {
     await expect(page).toHaveURL(/\/home$/);
     await expect(page.getByRole('heading', { name: /plan your ride/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
+  }
+
+  const placeBothPins = async (page: import('@playwright/test').Page) => {
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+  };
+
+  test('shows a Fare for Economy, Comfort, XL and Electric, with Economy chosen to start', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await placeBothPins(page);
+
+    const types = page.getByRole('group', { name: 'Choose a Vehicle Type' });
+    await expect(types.getByRole('radio', { name: 'Economy €2.02' })).toBeChecked();
+    await expect(types.getByRole('radio', { name: 'Comfort €2.79' })).not.toBeChecked();
+    await expect(types.getByRole('radio', { name: 'XL €3.64' })).not.toBeChecked();
+    await expect(types.getByRole('radio', { name: 'Electric €2.79' })).not.toBeChecked();
+  });
+
+  test('keeps the chosen Vehicle Type when a pin moves', async ({ page }) => {
+    let quotes = 0;
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await page.route('**/rider/fare', (r) => {
+      quotes += 1;
+      return r.fulfill({ json: quote });
+    });
+    await placeBothPins(page);
+
+    await page.getByText('Comfort', { exact: true }).click();
+    await expect(page.getByRole('radio', { name: /comfort/i })).toBeChecked();
+
+    await page.getByRole('button', { name: /pickup point pin/i }).focus();
+    await page.keyboard.press('ArrowRight');
+
+    await expect.poll(() => quotes).toBe(2);
+    await expect(page.getByRole('radio', { name: /comfort/i })).toBeChecked();
+  });
+
+  test('changes the Vehicle Type with the arrow keys', async ({ page }) => {
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await placeBothPins(page);
+
+    await page.getByRole('radio', { name: /economy/i }).focus();
+    await page.keyboard.press('ArrowDown');
+
+    await expect(page.getByRole('radio', { name: /comfort/i })).toBeChecked();
+  });
+
+  test('says plainly when the Fares cannot be loaded and lets the Rider try again', async ({ page }) => {
+    let attempts = 0;
+    await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+    await signUpAndOpenPlanner(page);
+    await page.route('**/rider/fare', (r) => {
+      attempts += 1;
+      return attempts === 1 ? r.fulfill({ status: 503, json: { message: 'Routing is unavailable right now. Try again in a moment.' } }) : r.fulfill({ json: quote });
+    });
+    await placeBothPins(page);
+
+    await expect(page.getByRole('alert')).toContainText(/routing is unavailable/i);
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    await expect(page.getByRole('radio', { name: /economy/i })).toBeVisible();
+  });
+
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    test(`does not resize the planner as the Fares load and arrive, at ${viewport.width} px wide`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+      await signUpAndOpenPlanner(page);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/rider/fare', async (r) => {
+        await gate;
+        await r.fulfill({ json: quote });
+      });
+      const height = async () => (await page.locator('.planner').boundingBox())!.height;
+      const empty = await height();
+      await placeBothPins(page);
+
+      await expect(page.getByRole('status').filter({ hasText: 'Loading the Fares…' })).toBeAttached();
+      const loading = await height();
+      release();
+      await expect(page.getByRole('radio', { name: /xl/i })).toBeVisible();
+
+      expect(loading).toBe(empty);
+      expect(await height()).toBe(empty);
+    });
+  }
+
+  for (const width of [320, 360, 390, 1280]) {
+    test(`keeps every Vehicle Type name and a long Fare inside its option at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.route('**/rider/route', (r) => r.fulfill({ json: route }));
+      await signUpAndOpenPlanner(page);
+      await page.route('**/rider/fare', (r) => r.fulfill({ json: { ...quote, fares: quote.fares.map((fare) => ({ ...fare, amountCents: 1_234_567 })) } }));
+      await placeBothPins(page);
+      await expect(page.getByText('€12,345.67')).toHaveCount(4);
+
+      const spill = await page.locator('.vehicle-type span').evaluateAll((parts) => Math.max(...parts.map((el) => el.getBoundingClientRect().width - el.parentElement!.clientWidth)));
+
+      expect(spill).toBeLessThanOrEqual(0);
+    });
   }
 
   test('shows the page shell and its own loader straight away on a slow connection, instead of a blank page', async ({ page }) => {

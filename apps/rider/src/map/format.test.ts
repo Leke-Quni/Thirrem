@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDistance, formatDuration } from './format';
+import { formatDistance, formatDuration, formatFare } from './format';
 
 describe('formatDistance', () => {
   it('shows metres under a kilometre, rounded to ten', () => {
@@ -19,5 +19,14 @@ describe('formatDuration', () => {
   });
   it('switches to hours and minutes from an hour up', () => {
     expect(formatDuration(3900)).toBe('1 h 5 min');
+  });
+});
+
+describe('formatFare', () => {
+  it('shows euro cents as euros with two decimals', () => {
+    expect(formatFare(210)).toBe('€2.10');
+  });
+  it('groups thousands', () => {
+    expect(formatFare(123456)).toBe('€1,234.56');
   });
 });
