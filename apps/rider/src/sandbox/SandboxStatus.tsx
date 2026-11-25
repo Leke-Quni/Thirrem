@@ -5,7 +5,8 @@ export function SandboxStatus({ sandbox, onRetry }: { sandbox: SandboxState; onR
     <>
       <p className="map-status" role="status">
         {sandbox.status === 'loading' && 'Placing Drivers…'}
-        {sandbox.status === 'ready' && `${sandbox.drivers.length} simulated Drivers nearby`}
+        {sandbox.status === 'ready' &&
+          (sandbox.reconnecting ? 'Reconnecting to the Drivers…' : `${sandbox.drivers.length} simulated ${sandbox.drivers.length === 1 ? 'Driver' : 'Drivers'} nearby`)}
       </p>
       {sandbox.status === 'error' && (
         <div className="map-status is-error" role="alert">

@@ -7,9 +7,11 @@ const newEmail = () => `rider-${randomUUID()}@example.com`;
 const driversAround = ({ lat, lon }: { lat: number; lon: number }) =>
   Array.from({ length: 40 }, (_, index) => ({ id: `driver-${index}`, heading: (index * 47) % 360, vehicleType: ['economy', 'comfort', 'xl', 'electric'][index % 4], lat: lat + index * 0.0002, lon: lon + index * 0.0002 }));
 
-// Placing Drivers asks a public routing server, so no browser test lets that request through.
+// Most browser tests answer for the Sandbox themselves, so they choose exactly where the Drivers are.
 test.beforeEach(async ({ page }) => {
   await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: driversAround(r.request().postDataJSON().centre) } }));
+  // A live feed that connects and says nothing.
+  await page.routeWebSocket('**/rider/live', () => undefined);
 });
 
 test.describe('Rider landing page', () => {
@@ -889,6 +891,96 @@ test.describe('Rider Sandbox with simulated Drivers', () => {
         expect(message.y + message.height).toBeLessThanOrEqual(map.y + map.height);
       });
     }
+  });
+
+  test.describe('live positions', () => {
+    const car = { id: 'only', vehicleType: 'economy', heading: 90, ...gjakova };
+    const frame = (changes: Partial<typeof car>) => JSON.stringify({ event: 'drivers', data: { drivers: [{ ...car, ...changes }] } });
+
+    /** Answers for the live feed, keeping each connection and what it was told. */
+    const liveFeed = async (page: Page) => {
+      const connections: Array<{ socket: import('@playwright/test').WebSocketRoute; told: unknown[] }> = [];
+      await page.routeWebSocket('**/rider/live', (socket) => {
+        const connection = { socket, told: [] as unknown[] };
+        connections.push(connection);
+        socket.onMessage((message) => connection.told.push(JSON.parse(String(message))));
+      });
+      return connections;
+    };
+
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+      });
+      await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: [car] } }));
+    });
+
+    test('moves and turns a car as new positions arrive, without reloading', async ({ page }) => {
+      const connections = await liveFeed(page);
+      await openHome(page);
+      await expect(drivers(page)).toHaveCount(1);
+      await expect.poll(() => connections[0]?.told).toEqual([{ event: 'watch', data: { token: expect.any(String) } }]);
+      const marker = (await drivers(page).elementHandle())!;
+      const before = (await drivers(page).boundingBox())!;
+
+      connections[0]!.socket.send(frame({ lon: gjakova.lon + 0.001, heading: 180 }));
+
+      await expect(drivers(page)).toHaveAttribute('style', /rotateZ\(180deg\)/);
+      await expect.poll(async () => (await drivers(page).boundingBox())!.x).toBeGreaterThan(before.x + 10);
+      expect(await marker.evaluate((element) => element.isConnected)).toBe(true);
+    });
+
+    test('says it is reconnecting when the feed drops, and carries on when it is back', async ({ page }) => {
+      const connections = await liveFeed(page);
+      await openHome(page);
+      await expect.poll(() => connections[0]?.told.length).toBe(1);
+
+      await connections[0]!.socket.close({ code: 1011 });
+      await expect(page.getByRole('status').filter({ hasText: 'Reconnecting to the Drivers…' })).toBeVisible();
+      await expect(drivers(page)).toHaveCount(1);
+
+      await expect.poll(() => connections[1]?.told.length).toBe(1);
+      connections[1]!.socket.send(frame({ heading: 200 }));
+
+      await expect(page.getByRole('status').filter({ hasText: '1 simulated Driver nearby' })).toBeVisible();
+      await expect(drivers(page)).toHaveAttribute('style', /rotateZ\(200deg\)/);
+    });
+
+    test('opens the Sandbox again when the server no longer has it', async ({ page }) => {
+      const connections = await liveFeed(page);
+      let opened = 0;
+      await page.route('**/rider/sandbox', (r) => {
+        opened += 1;
+        return r.fulfill({ json: { drivers: [car] } });
+      });
+      await openHome(page);
+      await expect.poll(() => connections[0]?.told.length).toBe(1);
+
+      await connections[0]!.socket.close({ code: 4404 });
+
+      await expect.poll(() => opened).toBe(2);
+      await expect.poll(() => connections.length).toBe(2);
+      await expect(drivers(page)).toHaveCount(1);
+    });
+  });
+
+  test('receives live positions from the real API', async ({ page }) => {
+    await page.unrouteAll();
+    // A page keeps its socket routes, so a fresh one is needed to reach the real feed.
+    const real = await page.context().newPage();
+    await real.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+    });
+    const received = new Promise<string>((resolve) => {
+      real.on('websocket', (socket) => {
+        if (socket.url().endsWith('/rider/live')) socket.on('framereceived', ({ payload }) => resolve(String(payload)));
+      });
+    });
+
+    await openHome(real);
+
+    expect(JSON.parse(await received).data.drivers).toHaveLength(40);
+    await expect(drivers(real)).toHaveCount(40);
   });
 
   test('uses Gjakova when the location question is left unanswered', async ({ page }) => {

@@ -4,7 +4,8 @@ import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
-import { driverElement } from './driver-marker';
+import { DriverFleet } from './driver-fleet';
+import { driverCar } from './driver-marker';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
 import type { PinSlot, PlanPoint } from './planner';
 
@@ -60,6 +61,7 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<Partial<Record<PinSlot, maplibregl.Marker>>>({});
+  const fleet = useRef<DriverFleet | null>(null);
   const latest = useRef({ onPlace, onMove, onReady, onFailure, geometry });
   latest.current = { onPlace, onMove, onReady, onFailure, geometry };
 
@@ -81,6 +83,14 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
       attributionControl: false,
     });
     map.current = instance;
+    const lessMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    fleet.current = new DriverFleet({
+      createCar: (pose) => driverCar(instance, pose),
+      requestFrame: (draw) => requestAnimationFrame(draw),
+      cancelFrame: (frame) => cancelAnimationFrame(frame),
+      now: () => performance.now(),
+      reducedMotion: () => lessMotion.matches,
+    });
     instance.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     instance.on('load', () => latest.current.onReady());
@@ -104,6 +114,8 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
     return () => {
       host.removeEventListener('keydown', onKeyDown);
       themeWatcher.disconnect();
+      fleet.current?.clear();
+      fleet.current = null;
       instance.remove();
       map.current = null;
       markers.current = {};
@@ -145,10 +157,7 @@ export function RideMap({ pickup, dropoff, geometry, drivers, focus, onPlace, on
   }, [pickup, dropoff]);
 
   useEffect(() => {
-    const instance = map.current;
-    if (!instance) return;
-    const cars = drivers.map(({ lat, lon, heading }) => new maplibregl.Marker({ element: driverElement(), rotation: heading, rotationAlignment: 'map' }).setLngLat([lon, lat]).addTo(instance));
-    return () => cars.forEach((car) => car.remove());
+    fleet.current?.show(drivers);
   }, [drivers]);
 
   useEffect(() => {
