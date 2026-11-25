@@ -15,7 +15,7 @@ Migrations live in `apps/api/migrations` and run with `yarn workspace @thirrem/a
 ### Verify before relying on Funnel
 
 - **Reboot:** reboot the laptop, run `yarn demo:up`, and confirm the URL is unchanged.
-- **Websockets:** confirm a websocket connects through the URL once the API has a websocket endpoint.
+- **Websockets:** log in to the Rider app through the URL and confirm the cars move. Their positions arrive on a websocket at `/rider/live`.
 - **Fallback:** if either fails, use an ngrok free dev domain. Its pages show a browser warning unless requests send the `ngrok-skip-browser-warning` header.
 
 ### Map and routing services
