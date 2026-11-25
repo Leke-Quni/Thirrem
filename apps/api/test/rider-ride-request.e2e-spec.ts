@@ -125,7 +125,7 @@ describe("A Rider's Ride Request", () => {
 
     clock.advance(MINUTE);
 
-    expect((await rider.sandbox()).rideRequest).toEqual({ ...first, approach: expect.anything() });
+    expect((await rider.sandbox()).rideRequest).toEqual({ ...first, approach: expect.anything(), cancellation: { counts: 'late', quickForS: null, pausesRequests: false } });
   });
 
   it("shows the matched Driver's name, vehicle and rating", async () => {
