@@ -11,9 +11,27 @@ export class InMemorySandboxRepository extends SandboxRepository {
     this.sandboxes.set(accountId, sandbox);
   }
 
+  async hasRoom(accountId: string, runningSince: number, limit: number): Promise<boolean> {
+    return this.fewerOthersRunning(accountId, runningSince, limit);
+  }
+
+  async saveIfRoom(accountId: string, sandbox: Sandbox, runningSince: number, limit: number): Promise<boolean> {
+    if (!this.fewerOthersRunning(accountId, runningSince, limit)) return false;
+    this.sandboxes.set(accountId, sandbox);
+    return true;
+  }
+
   async deleteIdleSince(lastActiveMs: number): Promise<void> {
     for (const [accountId, sandbox] of this.sandboxes) {
       if (sandbox.lastActiveMs <= lastActiveMs) this.sandboxes.delete(accountId);
     }
+  }
+
+  private fewerOthersRunning(accountId: string, runningSince: number, limit: number): boolean {
+    let others = 0;
+    for (const [id, { lastActiveMs }] of this.sandboxes) {
+      if (id !== accountId && lastActiveMs > runningSince) others += 1;
+    }
+    return others < limit;
   }
 }

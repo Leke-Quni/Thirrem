@@ -65,6 +65,12 @@ export interface SandboxResponse {
   drivers: SimulatedDriver[];
 }
 
+/** The 503 answer to opening a Sandbox when as many as are allowed are already running. */
+export interface SandboxBusyResponse {
+  code: 'SANDBOX_LIMIT';
+  message: string;
+}
+
 /** What the live feed at `/rider/live` sends, after being told `{ event: 'watch', data: { token } }`. */
 export interface SandboxLiveMessage {
   event: 'drivers';
