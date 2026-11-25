@@ -13,6 +13,7 @@ export interface AppConfig {
   authRateLimit: { limit: number; windowMs: number };
   fareRates: FareRates;
   live: { intervalMs: number; helloTimeoutMs: number };
+  sandboxSweepMs: number;
 }
 
 const DEV_DATABASE_URL = 'postgres://thirrem:thirrem@localhost:5433/thirrem';
@@ -41,5 +42,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     authRateLimit: { limit: Number(env.AUTH_RATE_LIMIT ?? 10), windowMs: 60_000 },
     fareRates: FARE_RATES,
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
+    sandboxSweepMs: 60_000,
   };
 }

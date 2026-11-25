@@ -3,7 +3,9 @@ import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 import type { Coordinate, SimulatedDriver } from '@thirrem/types';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '../src/auth/auth.service.js';
+import { SandboxRepository } from '../src/sandbox/sandbox.repository.js';
 import { distanceM } from '../src/sandbox/driver-placement.js';
 import { createTestApp, ManualClock } from './support/app.js';
 import { FakePlaceSearchService } from './support/fake-places.js';
@@ -15,6 +17,8 @@ import type { Pacer } from '../src/sandbox/pacer.js';
 const password = 'Correct-horse-battery';
 const centre = { lat: 42.3803, lon: 20.4308 };
 const MINUTE = 60_000;
+/** From the last activity: 15 minutes until it stops, then 24 hours until it is discarded. */
+const DISCARDED_AFTER = 15 * MINUTE + 24 * 60 * MINUTE;
 
 describe("The life of a Rider's Sandbox", () => {
   const apps: INestApplication[] = [];
@@ -28,7 +32,7 @@ describe("The life of a Rider's Sandbox", () => {
     const clock = new ManualClock(new Date('2026-01-01T00:00:00Z'));
     const roads = new FakeRoadService();
     const routing = new FakeRoutingService({ distanceM: 1_000, durationS: 100, geometry: [] });
-    const app = await createTestApp({ clock, roads, pacer, routing, places: new FakePlaceSearchService([]), config: { live: { intervalMs: 20, helloTimeoutMs: 200 } } });
+    const app = await createTestApp({ clock, roads, pacer, routing, places: new FakePlaceSearchService([]), config: { live: { intervalMs: 20, helloTimeoutMs: 200 }, sandboxSweepMs: 20 } });
     apps.push(app);
     await app.listen(0, '127.0.0.1');
     const rider = async () => {
@@ -196,5 +200,66 @@ describe("The life of a Rider's Sandbox", () => {
 
     expect(distanceM(parked[1]!, later[1]!)).toBeGreaterThan(80);
     expect(distanceM(parked[1]!, later[1]!)).toBeLessThan(120);
+  });
+
+  const accountOf = async (app: INestApplication, token: string) => (await app.get(AuthService).authenticate('rider', token)).id;
+
+  it('keeps a stopped Sandbox for 24 hours', async () => {
+    const { clock, rider, drivers } = await start(new InstantPacer());
+    const token = await rider();
+    const first = await drivers(token);
+
+    clock.advance(DISCARDED_AFTER - 1);
+
+    expect(ids(await drivers(token))).toEqual(ids(first));
+  });
+
+  it('discards it after that, and gives a returning Rider a new one that works', async () => {
+    const { clock, roads, rider, drivers, watch, allPathsReady } = await start(new InstantPacer());
+    const token = await rider();
+    await allPathsReady(token);
+    const first = await drivers(token);
+
+    clock.advance(DISCARDED_AFTER);
+    expect(await watch(token).first).toBe(4404);
+    const next = await drivers(token);
+
+    expect(next).toHaveLength(40);
+    expect(ids(next).filter((id) => ids(first).includes(id))).toEqual([]);
+    const live = (await watch(token).first) as SimulatedDriver[];
+    clock.advance(10_000);
+    expect((await drivers(token))[0]).not.toEqual(live[0]);
+    // The saved paths of the area outlive the Sandbox.
+    expect(roads.requests).toHaveLength(1);
+  });
+
+  it('lets go of a discarded Sandbox even if its Rider never comes back, and no other', async () => {
+    const { app, clock, rider, drivers } = await start(new InstantPacer());
+    const [gone, recent] = [await rider(), await rider()];
+    await drivers(gone);
+    clock.advance(MINUTE);
+    await drivers(recent);
+    const sandboxes = app.get(SandboxRepository);
+    const [goneId, recentId] = [await accountOf(app, gone), await accountOf(app, recent)];
+
+    clock.advance(DISCARDED_AFTER - MINUTE);
+
+    await vi.waitFor(async () => expect(await sandboxes.findByAccount(goneId)).toBeNull(), { interval: 5 });
+    expect(await sandboxes.findByAccount(recentId)).not.toBeNull();
+  });
+
+  it("keeps the Rider's account when the Sandbox is discarded", async () => {
+    const { app, clock, drivers } = await start(new InstantPacer());
+    const email = `rider-${randomUUID()}@example.com`;
+    const { body } = await request(app.getHttpServer()).post('/rider/auth/signup').send({ email, password });
+    await drivers(body.token);
+    const sandboxes = app.get(SandboxRepository);
+    const accountId = await accountOf(app, body.token);
+
+    clock.advance(DISCARDED_AFTER);
+    await vi.waitFor(async () => expect(await sandboxes.findByAccount(accountId)).toBeNull(), { interval: 5 });
+
+    const again = await request(app.getHttpServer()).post('/rider/auth/login').send({ email, password }).expect(200);
+    expect(await drivers(again.body.token)).toHaveLength(40);
   });
 });

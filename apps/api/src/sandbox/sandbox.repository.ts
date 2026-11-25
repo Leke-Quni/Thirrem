@@ -15,4 +15,6 @@ export interface Sandbox {
 export abstract class SandboxRepository {
   abstract findByAccount(accountId: string): Promise<Sandbox | null>;
   abstract save(accountId: string, sandbox: Sandbox): Promise<void>;
+  /** Removes every Sandbox whose Rider was last active at or before `lastActiveMs`. */
+  abstract deleteIdleSince(lastActiveMs: number): Promise<void>;
 }

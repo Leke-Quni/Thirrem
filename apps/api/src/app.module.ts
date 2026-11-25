@@ -32,6 +32,7 @@ import { RiderLiveGateway } from './sandbox/rider-live.gateway.js';
 import { RiderSandboxController } from './sandbox/rider-sandbox.controller.js';
 import { RoadService } from './sandbox/road-service.js';
 import { SandboxRepository } from './sandbox/sandbox.repository.js';
+import { SandboxSweeper } from './sandbox/sandbox-sweeper.js';
 import { SandboxService } from './sandbox/sandbox.service.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
@@ -59,6 +60,7 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     SandboxService,
     { provide: RiderActivity, useExisting: SandboxService },
     RiderLiveGateway,
+    SandboxSweeper,
     AreaService,
     PathFetcher,
     { provide: Pacer, useClass: SystemPacer },

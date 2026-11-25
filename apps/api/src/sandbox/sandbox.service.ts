@@ -7,7 +7,7 @@ import { AreaService } from './area.service.js';
 import { distanceM } from './driver-placement.js';
 import { RiderActivity } from './rider-activity.js';
 import { driverAt, resumedDriver, sandboxDriver } from './sandbox-driver.js';
-import { sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
+import { discardCutoffMs, sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
 import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
 
 @Injectable()
@@ -46,7 +46,13 @@ export class SandboxService extends RiderActivity {
     const sandbox = await this.sandboxes.findByAccount(accountId);
     if (!sandbox) return null;
     const now = this.clock.now().getTime();
-    return sandboxStatus(sandbox.lastActiveMs, now) === 'running' ? this.driversOf(sandbox, now) : 'stopped';
+    const status = sandboxStatus(sandbox.lastActiveMs, now);
+    if (status === 'discarded') return null;
+    return status === 'running' ? this.driversOf(sandbox, now) : 'stopped';
+  }
+
+  discardExpired(): Promise<void> {
+    return this.sandboxes.deleteIdleSince(discardCutoffMs(this.clock.now().getTime()));
   }
 
   private driversOf({ area, drivers, resumedAtMs }: Sandbox, nowMs: number): SimulatedDriver[] {
@@ -66,7 +72,8 @@ export class SandboxService extends RiderActivity {
 
   private async reuseOrPlace(accountId: string, centre: Coordinate): Promise<Sandbox> {
     const existing = await this.sandboxes.findByAccount(accountId);
-    const reused = existing && distanceM(existing.centre, centre) <= SAME_PLACE_M;
+    const reused =
+      existing && distanceM(existing.centre, centre) <= SAME_PLACE_M && sandboxStatus(existing.lastActiveMs, this.clock.now().getTime()) !== 'discarded';
     const area = reused ? existing.area : await this.areas.areaAt(centre);
     const now = this.clock.now().getTime();
     const sandbox = reused ? this.active(existing, now) : this.create(centre, area, now);
