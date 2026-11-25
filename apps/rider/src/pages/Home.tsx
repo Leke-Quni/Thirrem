@@ -1,4 +1,4 @@
-import type { Coordinate, PlaceResult, VehicleType } from '@thirrem/types';
+import type { Coordinate, PlaceResult, SimulatedDriver, VehicleType } from '@thirrem/types';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -11,8 +11,14 @@ import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
 import { useFareQuote } from '../map/useFareQuote';
 import { useRoute } from '../map/useRoute';
+import { sandboxCentre } from '../sandbox/sandbox-centre';
+import { SandboxStatus } from '../sandbox/SandboxStatus';
+import { useDeviceLocation } from '../sandbox/useDeviceLocation';
+import { useSandbox } from '../sandbox/useSandbox';
 import { HomeSkeleton } from './HomeSkeleton';
 import { SessionUnavailable } from './SessionUnavailable';
+
+const NO_DRIVERS: SimulatedDriver[] = [];
 
 export function Home() {
   const { email, loading, unreachable, expired, retry: retrySession, logout } = useAuth();
@@ -26,6 +32,8 @@ export function Home() {
   const { state: route, retry } = useRoute(plan.pickup, plan.dropoff);
   const { state: fare, retry: retryFare } = useFareQuote(plan.pickup, plan.dropoff);
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
+  const device = useDeviceLocation(mapState === 'ready');
+  const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
 
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -35,10 +43,12 @@ export function Home() {
     setLocateMessage(null);
     try {
       const point = await locate();
+      device.found(point);
       if (auto && planRef.current.pickup) return;
       dispatch({ type: 'choose', slot: 'pickup', point: { ...point, origin: 'device' } });
       setFocus((current) => ({ point, nonce: (current?.nonce ?? 0) + 1 }));
     } catch (error) {
+      device.failed();
       setLocateMessage(error instanceof Error ? error.message : 'Your location could not be found. Click the map to place a pin instead.');
     } finally {
       setLocating(false);
@@ -108,12 +118,14 @@ export function Home() {
             dropoff={plan.dropoff}
             geometry={route.status === 'ready' ? route.route.geometry : null}
             focus={focus}
+            drivers={'drivers' in sandbox ? sandbox.drivers : NO_DRIVERS}
             onPlace={(point) => dispatch({ type: 'place', point })}
             onMove={(slot, point) => dispatch({ type: 'move', slot, point })}
             onReady={() => setMapState('ready')}
             onFailure={() => setMapState('failed')}
           />
           <div className="map-crosshair" aria-hidden="true" />
+          {mapState === 'ready' && <SandboxStatus sandbox={sandbox} onRetry={retrySandbox} onStartNew={startNewSandbox} />}
           {mapState === 'loading' && (
             <div className="map-loading" role="status">
               <RouteLoader label="Loading the map…" />

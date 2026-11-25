@@ -19,13 +19,27 @@ import { CachingPlaceSearchService } from './places/caching-place-search.service
 import { PhotonPlaceSearchService } from './places/photon-place-search.service.js';
 import { PlaceSearchService } from './places/place-search.service.js';
 import { RiderPlacesController } from './places/rider-places.controller.js';
-import { AuthRateLimitGuard, FareRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
+import { AuthRateLimitGuard, FareRateLimitGuard, RATE_LIMIT, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SandboxRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
+import { AreaRepository } from './sandbox/area.repository.js';
+import { AreaService } from './sandbox/area.service.js';
+import { InMemoryAreaRepository } from './sandbox/in-memory-area.repository.js';
+import { InMemorySandboxRepository } from './sandbox/in-memory-sandbox.repository.js';
+import { OsrmRoadService } from './sandbox/osrm-road-service.js';
+import { Pacer, SystemPacer } from './sandbox/pacer.js';
+import { PathFetcher } from './sandbox/path-fetcher.js';
+import { RiderActivity } from './sandbox/rider-activity.js';
+import { RiderLiveGateway } from './sandbox/rider-live.gateway.js';
+import { RiderSandboxController } from './sandbox/rider-sandbox.controller.js';
+import { RoadService } from './sandbox/road-service.js';
+import { SandboxRepository } from './sandbox/sandbox.repository.js';
+import { SandboxSweeper } from './sandbox/sandbox-sweeper.js';
+import { SandboxService } from './sandbox/sandbox.service.js';
 import { SimulationClock, SystemClock } from './simulation-clock/simulation-clock.js';
 
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -42,6 +56,17 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     },
     RouteRateLimitGuard,
     FareRateLimitGuard,
+    SandboxRateLimitGuard,
+    SandboxService,
+    { provide: RiderActivity, useExisting: SandboxService },
+    RiderLiveGateway,
+    SandboxSweeper,
+    AreaService,
+    PathFetcher,
+    { provide: Pacer, useClass: SystemPacer },
+    { provide: AreaRepository, useFactory: () => new InMemoryAreaRepository() },
+    { provide: SandboxRepository, useClass: InMemorySandboxRepository },
+    { provide: RoadService, useFactory: (config: AppConfig) => new OsrmRoadService(config.osrmUrl), inject: [APP_CONFIG] },
     SearchRateLimitGuard,
     { provide: SEARCH_RATE_LIMIT, useFactory: (config: AppConfig) => config.searchRateLimit, inject: [APP_CONFIG] },
     {

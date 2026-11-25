@@ -10,6 +10,10 @@ import { SimulationClock } from '../../src/simulation-clock/simulation-clock.js'
 import { ROAD_GRAPH, type RoadGraph } from '../../src/road-graph/road-graph.js';
 import { PlaceSearchService } from '../../src/places/place-search.service.js';
 import { RoutingService } from '../../src/routing/routing.service.js';
+import { Pacer } from '../../src/sandbox/pacer.js';
+import { RoadService } from '../../src/sandbox/road-service.js';
+import { FakeRoadService } from './fake-road-service.js';
+import { ManualPacer } from './pacers.js';
 
 export class ManualClock extends SimulationClock {
   constructor(private current: Date) {
@@ -23,7 +27,7 @@ export class ManualClock extends SimulationClock {
   }
 }
 
-export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; routing?: RoutingService; places?: PlaceSearchService; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions; routeRateLimit?: RateLimitOptions; searchRateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
+export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; routing?: RoutingService; places?: PlaceSearchService; roads?: RoadService; pacer?: Pacer; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions; routeRateLimit?: RateLimitOptions; searchRateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
   const config = { ...loadConfig(), ...options.config };
   let builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_CONFIG)
@@ -33,7 +37,12 @@ export async function createTestApp(options: { clock?: ManualClock; roadGraph?: 
     .overrideProvider(ROUTE_RATE_LIMIT)
     .useValue(options.routeRateLimit ?? { limit: 10_000, windowMs: 60_000 })
     .overrideProvider(SEARCH_RATE_LIMIT)
-    .useValue(options.searchRateLimit ?? { limit: 10_000, windowMs: 60_000 });
+    .useValue(options.searchRateLimit ?? { limit: 10_000, windowMs: 60_000 })
+    // Never the public routing server, and no new path unless the test hands over a pacer.
+    .overrideProvider(RoadService)
+    .useValue(options.roads ?? new FakeRoadService())
+    .overrideProvider(Pacer)
+    .useValue(options.pacer ?? new ManualPacer());
   if (options.clock) builder = builder.overrideProvider(SimulationClock).useValue(options.clock);
   if (options.roadGraph) builder = builder.overrideProvider(ROAD_GRAPH).useValue(options.roadGraph);
   if (options.routing) builder = builder.overrideProvider(RoutingService).useValue(options.routing);

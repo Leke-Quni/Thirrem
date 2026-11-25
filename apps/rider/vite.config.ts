@@ -7,5 +7,5 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: { exclude: ['maplibre-gl'] },
   define: { __API_BASE_URL__: JSON.stringify((process.env.API_BASE_URL ?? '').replace(/\/$/, '')) },
-  server: { port: 5002, strictPort: true, proxy: { '/rider': api, '/health': api } },
+  server: { port: 5002, strictPort: true, proxy: { '/rider': { target: api, ws: true }, '/health': api } },
 });

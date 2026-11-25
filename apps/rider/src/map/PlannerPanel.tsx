@@ -104,7 +104,7 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
       </ul>
 
       <p className="locate-note" role="status">
-        {locateMessage ?? 'Using your location only places the pin. It is not stored.'}
+        {locateMessage ?? 'Your location places the pin and Drivers. It is not saved.'}
       </p>
 
       <div className="route-summary" aria-live="polite">

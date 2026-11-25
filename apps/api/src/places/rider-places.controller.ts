@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Headers, Query, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import type { PlaceResult, StreetResponse } from '@thirrem/types';
 import { AuthService } from '../auth/auth.service.js';
+import { RiderActivity } from '../sandbox/rider-activity.js';
 import type { Coordinate } from '../routing/routing.service.js';
 import { SearchRateLimitGuard } from '../security/rate-limiter.js';
 import { PlaceSearchService } from './place-search.service.js';
@@ -25,6 +26,7 @@ function parseNear(lat: string | undefined, lon: string | undefined): Coordinate
 export class RiderPlacesController {
   constructor(
     private readonly auth: AuthService,
+    private readonly activity: RiderActivity,
     private readonly places: PlaceSearchService,
   ) {}
 
@@ -36,7 +38,8 @@ export class RiderPlacesController {
     @Query('lat') lat?: string,
     @Query('lon') lon?: string,
   ): Promise<PlaceResult[]> {
-    await this.auth.authenticate('rider', bearerToken(authorization));
+    const account = await this.auth.authenticate('rider', bearerToken(authorization));
+    await this.activity.record(account.id);
     const query = typeof q === 'string' ? q.trim() : '';
     if (query.length < 2 || query.length > 100) throw new BadRequestException('Type 2 to 100 characters to search for a street or place.');
     const near = parseNear(lat, lon);
@@ -48,7 +51,8 @@ export class RiderPlacesController {
   @Get('places/reverse')
   @UseGuards(SearchRateLimitGuard)
   async streetAt(@Headers('authorization') authorization: string | undefined, @Query('lat') lat?: string, @Query('lon') lon?: string): Promise<StreetResponse> {
-    await this.auth.authenticate('rider', bearerToken(authorization));
+    const account = await this.auth.authenticate('rider', bearerToken(authorization));
+    await this.activity.record(account.id);
     const point = requirePoint(lat, lon);
     const street = await this.places.streetAt(point).catch(() => {
       throw new ServiceUnavailableException('The street name is unavailable right now.');

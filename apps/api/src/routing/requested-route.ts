@@ -6,7 +6,7 @@ export interface RouteRequest {
   dropoff?: unknown;
 }
 
-function parseCoordinate(value: unknown, label: string): Coordinate {
+export function parseCoordinate(value: unknown, label: string): Coordinate {
   const { lat, lon } = (value ?? {}) as Record<string, unknown>;
   const valid =
     typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;

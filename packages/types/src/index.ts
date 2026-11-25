@@ -53,3 +53,29 @@ export interface FareResponse {
   durationS: number;
   fares: FareQuote[];
 }
+
+export interface SimulatedDriver extends Coordinate {
+  id: string;
+  vehicleType: VehicleType;
+  /** The direction the vehicle faces, in degrees clockwise from north. */
+  heading: number;
+}
+
+export interface SandboxResponse {
+  drivers: SimulatedDriver[];
+}
+
+/** The 503 answer to opening a Sandbox when as many as are allowed are already running. */
+export interface SandboxBusyResponse {
+  code: 'SANDBOX_LIMIT';
+  message: string;
+}
+
+/** What the live feed at `/rider/live` sends, after being told `{ event: 'watch', data: { token } }`. */
+export interface SandboxLiveMessage {
+  event: 'drivers';
+  data: SandboxResponse;
+}
+
+/** Why the live feed closes: an unknown session, no Sandbox to watch, no token sent in time, or a stopped Sandbox. */
+export type SandboxLiveCloseCode = 4401 | 4404 | 4408 | 4410;
