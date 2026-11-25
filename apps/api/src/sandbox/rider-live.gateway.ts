@@ -68,8 +68,8 @@ export class RiderLiveGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   private async send(client: WebSocket, accountId: string): Promise<boolean> {
     const drivers = await this.sandboxes.drivers(accountId);
-    if (!drivers) {
-      this.drop(client, 4404);
+    if (!drivers || drivers === 'stopped') {
+      this.drop(client, drivers ? 4410 : 4404);
       return false;
     }
     // A client still receiving the last positions is not sent more to queue up behind them.
