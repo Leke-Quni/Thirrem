@@ -4,6 +4,14 @@ import { expect, test } from '@playwright/test';
 const password = 'Correct-horse-battery';
 const newEmail = () => `rider-${randomUUID()}@example.com`;
 
+const driversAround = ({ lat, lon }: { lat: number; lon: number }) =>
+  Array.from({ length: 40 }, (_, index) => ({ id: `driver-${index}`, heading: (index * 47) % 360, vehicleType: ['economy', 'comfort', 'xl', 'electric'][index % 4], lat: lat + index * 0.0002, lon: lon + index * 0.0002 }));
+
+// Placing Drivers asks a public routing server, so no browser test lets that request through.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: driversAround(r.request().postDataJSON().centre) } }));
+});
+
 test.describe('Rider landing page', () => {
   test('explains that this is a simulated demo and links to signup and login', async ({ page }) => {
     await page.goto('/');
@@ -756,6 +764,146 @@ test.describe('Rider ride planner', () => {
       await expect(page.getByText(/location access is blocked.*click the map/i)).toBeVisible();
       await expect(page.getByText('Not set').first()).toBeVisible();
     });
+  });
+});
+
+test.describe('Rider Sandbox with simulated Drivers', () => {
+  type Page = import('@playwright/test').Page;
+  const gjakova = { lat: 42.3803, lon: 20.4308 };
+  const london = { lat: 51.5072, lon: -0.1276 };
+
+  const recordCentres = async (page: Page) => {
+    const centres: Array<{ lat: number; lon: number }> = [];
+    await page.route('**/rider/sandbox', (r) => {
+      const { centre } = r.request().postDataJSON();
+      centres.push(centre);
+      return r.fulfill({ json: { drivers: driversAround(centre) } });
+    });
+    return centres;
+  };
+
+  const openHome = async (page: Page) => {
+    await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street: null } }));
+    const signup = await page.request.post('/rider/auth/signup', { data: { email: newEmail(), password } });
+    const { token } = await signup.json();
+    await page.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
+    await page.goto('/home');
+    await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
+  };
+
+  const choosePickup = async (page: Page, place: { name: string; lat: number; lon: number }) => {
+    await page.route('**/rider/places?**', (r) => r.fulfill({ json: [{ detail: '', ...place }] }));
+    await page.getByRole('combobox', { name: /search for the pickup point/i }).fill(place.name);
+    await page.getByRole('option', { name: place.name }).click();
+  };
+
+  const drivers = (page: Page) => page.locator('.ride-map .driver');
+
+  test.describe('with location allowed', () => {
+    test.use({ geolocation: { latitude: london.lat, longitude: london.lon }, permissions: ['geolocation'] });
+
+    test('shows the simulated Drivers around the device location after logging in', async ({ page }) => {
+      const centres = await recordCentres(page);
+      await openHome(page);
+
+      await expect(drivers(page)).toHaveCount(40);
+      await expect(page.getByRole('status').filter({ hasText: '40 simulated Drivers nearby' })).toBeVisible();
+      expect(centres).toEqual([london]);
+    });
+
+    test('keeps the Drivers for a nearby Pickup Point and moves them to a far one', async ({ page }) => {
+      const centres = await recordCentres(page);
+      await openHome(page);
+      await expect(drivers(page)).toHaveCount(40);
+
+      await choosePickup(page, { name: 'Nearby Road', lat: london.lat + 0.03, lon: london.lon });
+      await expect(page.getByText('Nearby Road', { exact: true }).first()).toBeVisible();
+      expect(centres).toHaveLength(1);
+
+      await choosePickup(page, { name: 'Rue de Paris', lat: 48.8566, lon: 2.3522 });
+      await expect.poll(() => centres.at(-1)).toEqual({ lat: 48.8566, lon: 2.3522 });
+      expect(centres).toHaveLength(2);
+    });
+  });
+
+  test.describe('with location blocked', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+      });
+    });
+
+    test('puts the Drivers around Gjakova, then around the Pickup Point once one is set', async ({ page }) => {
+      const centres = await recordCentres(page);
+      await openHome(page);
+      await expect.poll(() => centres).toEqual([gjakova]);
+
+      await choosePickup(page, { name: 'Rue de Paris', lat: 48.8566, lon: 2.3522 });
+
+      await expect.poll(() => centres.at(-1)).toEqual({ lat: 48.8566, lon: 2.3522 });
+    });
+
+    test('lets the Rider place a pin on top of a Driver', async ({ page }) => {
+      await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: [{ id: 'only', vehicleType: 'economy', heading: 90, ...gjakova }] } }));
+      await openHome(page);
+      const box = (await drivers(page).boundingBox())!;
+
+      await expect(drivers(page)).toHaveAttribute('style', /rotateZ\(90deg\)/);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+      await expect(page.getByRole('button', { name: /pickup point pin/i })).toBeVisible();
+    });
+
+    test('says it is placing Drivers, then says what went wrong and lets the Rider try again', async ({ page }) => {
+      let attempts = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/rider/sandbox', async (r) => {
+        attempts += 1;
+        if (attempts > 1) return r.fulfill({ json: { drivers: driversAround(gjakova) } });
+        await gate;
+        return r.fulfill({ status: 429, json: { message: 'Too many Sandbox requests. Please wait a minute and try again.' } });
+      });
+      await openHome(page);
+      await expect(page.getByRole('status').filter({ hasText: 'Placing Drivers…' })).toBeVisible();
+
+      release();
+      await expect(page.getByRole('alert')).toContainText(/too many sandbox requests/i);
+      await page.getByRole('button', { name: 'Try again' }).click();
+
+      await expect(drivers(page)).toHaveCount(40);
+    });
+
+    for (const width of [320, 1280]) {
+      test(`keeps the Driver message inside the map and clear of the zoom buttons at ${width} px wide`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 800 });
+        await page.route('**/rider/sandbox', (r) => r.fulfill({ status: 503, json: { message: 'Too many Sandbox requests. Please wait a minute and try again.' } }));
+        await openHome(page);
+
+        const message = (await page.getByRole('alert').boundingBox())!;
+        const map = (await page.locator('.map-card').boundingBox())!;
+        const zoom = (await page.getByRole('button', { name: 'Zoom in' }).boundingBox())!;
+
+        expect(message.x).toBeGreaterThanOrEqual(map.x);
+        expect(message.x + message.width).toBeLessThanOrEqual(zoom.x);
+        expect(message.y + message.height).toBeLessThanOrEqual(map.y + map.height);
+      });
+    }
+  });
+
+  test('uses Gjakova when the location question is left unanswered', async ({ page }) => {
+    await page.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = () => undefined;
+    });
+    const centres = await recordCentres(page);
+    await page.route('**/rider/places/reverse**', (r) => r.fulfill({ json: { street: null } }));
+    const signup = await page.request.post('/rider/auth/signup', { data: { email: newEmail(), password } });
+    const { token } = await signup.json();
+    await page.addInitScript((value) => localStorage.setItem('thirrem-rider-token', value), token);
+
+    await page.goto('/home');
+
+    await expect.poll(() => centres, { timeout: 25_000 }).toEqual([gjakova]);
   });
 });
 

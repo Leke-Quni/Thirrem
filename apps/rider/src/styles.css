@@ -267,6 +267,16 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .pin.pin-dropoff svg { display: block; }
 .pin:active { cursor: grabbing; }
 
+.ride-map .driver { color: var(--fg); pointer-events: none; z-index: 0; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
+.ride-map .driver svg { display: block; }
+.driver-body { fill: currentColor; stroke: var(--bg); stroke-width: 1.5; }
+.driver-glass { fill: var(--bg); opacity: 0.8; }
+.ride-map .maplibregl-marker.pin { z-index: 1; }
+.map-status { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 76px); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.map-status:empty { opacity: 0; pointer-events: none; }
+.map-status.is-error { color: var(--danger); }
+.map-status .retry { padding: 6px 12px; font-size: 13px; }
+
 .place-search { position: relative; }
 .place-input { width: 100%; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--field-bg); color: var(--fg); font-size: 15px; transition: border-color 0.15s; }
 .place-input::placeholder { color: var(--muted); opacity: 0.8; }
