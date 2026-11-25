@@ -6,6 +6,8 @@ A stopped Sandbox sends no positions: the live feed closes with code 4410, and t
 
 While a Sandbox is stopped, the Rider app looks at the live feed again once a minute, which counts as no activity, to learn whether it has been discarded and can no longer be continued.
 
+At most 30 Sandboxes run at once. Only running ones count, so a stopped Sandbox frees its place. Opening one that is not running, whether new, resumed or fresh, is refused while 30 others are, with status 503 and the code `SANDBOX_LIMIT`; the code tells it apart from a server that cannot be reached. A running Sandbox keeps its place when it is opened again, moved or replaced. A refused Sandbox is left as it was. There is no queue: the Rider app says all Sandboxes are busy and offers to try again.
+
 ## Consequences
 
 - A Rider who only watches the cars, or pans the map, sees the Sandbox stop after 15 minutes.
@@ -13,3 +15,6 @@ While a Sandbox is stopped, the Rider app looks at the live feed again once a mi
 - The saved paths of an area (ADR 0006) are kept after its Sandboxes are discarded, and paths already queued are still fetched.
 - A Rider app that lost its connection, and reconnects after its Sandbox was discarded, opens a new one without being asked.
 - For up to a minute after a discard, the dialog still offers to continue, and doing so makes a new Sandbox.
+- The count is kept by `SandboxRepository`, so several API processes would need to share it, as they would the Sandboxes (ADR 0005).
+- A place goes to whoever asks first after it is freed, and a Rider who has been waiting has no priority.
+- A Rider refused while continuing no longer has the live feed open, so learns that the Sandbox was discarded only by getting a new one on trying again.
