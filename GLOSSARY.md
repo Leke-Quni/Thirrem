@@ -13,7 +13,7 @@ A person who accepts requests and carries Riders to their destinations.
 _Avoid_: Captain, partner, operator
 
 **Ride Request**:
-A Rider's ask to find a Driver for a journey, open from the moment it is made until a Driver is matched or it is cancelled.
+A Rider's ask to find a Driver for a journey, open from the moment it is made until the Rider is picked up, or it is cancelled or fails. Matching a Driver does not close it.
 _Avoid_: Booking, trip request, order
 
 **Ride**:
