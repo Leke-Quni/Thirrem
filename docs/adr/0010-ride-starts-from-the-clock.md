@@ -9,4 +9,4 @@ The Ride's route from the Pickup Point to the Drop-off Point comes from `Routing
 ## Consequences
 
 - A Driver with no route to the Pickup Point never picks the Rider up.
-- The Ride does not complete yet (#56): the vehicle stays at the Drop-off Point, and the Rider can only start a new Sandbox.
+- The Ride completes at the Drop-off Point (ADR 0011).
