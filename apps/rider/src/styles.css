@@ -245,7 +245,7 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 
 .planner { min-height: var(--planner-min-h); box-sizing: border-box; padding: 22px; border-radius: 20px; background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow), 0 0 80px var(--glow); backdrop-filter: blur(24px) saturate(1.2); }
 .planner h1 { font-size: 26px; margin-bottom: 8px; }
-.planner-lead { color: var(--muted); font-size: 14px; margin-bottom: 18px; max-width: 34em; }
+.planner-lead { color: var(--muted); font-size: 14px; margin-bottom: 12px; max-width: 34em; }
 .pin-rows { list-style: none; padding: 0; display: grid; gap: 14px; }
 .pin-slot { display: grid; gap: 8px; }
 .pin-row { display: flex; gap: 8px; align-items: stretch; }
@@ -272,6 +272,12 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .driver-body { fill: currentColor; stroke: var(--bg); stroke-width: 1.5; }
 .driver-glass { fill: var(--bg); opacity: 0.8; }
 .ride-map .maplibregl-marker.pin { z-index: 1; }
+/* A purple ring shows who the Ride Request is offered to, then only the matched Driver keeps one. */
+.ride-map .driver[data-mark]::before, .ride-map .driver[data-mark='offered']::after { content: ''; position: absolute; top: 50%; left: 50%; box-sizing: border-box; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; border: 2px solid var(--accent); }
+.ride-map .driver[data-mark='offered']::after { animation: offer-ping 1.6s ease-out infinite; }
+.ride-map .driver[data-mark='matched'] { z-index: 1; color: var(--accent); }
+.ride-map .driver[data-mark='matched']::before { width: 44px; height: 44px; margin: -22px 0 0 -22px; border-width: 3px; background: color-mix(in srgb, var(--accent) 22%, transparent); z-index: -1; }
+@keyframes offer-ping { from { opacity: 0.8; transform: scale(1); } to { opacity: 0; transform: scale(1.8); } }
 .map-status { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 76px); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .map-status:empty { opacity: 0; pointer-events: none; }
 .map-status.is-error { color: var(--danger); }
@@ -338,6 +344,31 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
   .pin-row-main { gap: 8px; padding-inline: 8px; }
 }
 
+.request-ride { margin-top: 12px; display: grid; gap: 8px; }
+.request-ride .btn { height: 44px; padding-block: 0; }
+.request-ride .btn:disabled { cursor: not-allowed; }
+.request-ride .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
+.planner h1:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.ride-request { display: flex; flex-direction: column; gap: 16px; }
+.ride-request h1 { margin: 0; text-wrap: balance; }
+.searching { margin: 0; display: flex; gap: 12px; align-items: flex-start; font-size: 15px; line-height: 1.55; }
+.searching .spinner { flex: none; margin-top: 2px; }
+.driver-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding: 16px; border-radius: var(--radius-btn); border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.driver-card p { margin: 0; overflow-wrap: anywhere; }
+.driver-name { grid-column: 1 / -1; font-family: var(--font-head); font-weight: 600; font-size: 22px; letter-spacing: -0.035em; }
+.driver-rating { grid-column: 1 / -1; font-size: 13px; color: var(--muted); margin-bottom: 8px !important; }
+.driver-vehicle { font-size: 15px; }
+.driver-plate { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); font-weight: 600; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.request-note { margin: 0; font-size: 13px; color: var(--muted); }
+.request-summary { margin: 0; display: grid; }
+.request-summary div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--border); }
+.request-summary dt { flex: none; font-size: 13px; color: var(--muted); }
+.request-summary dd { margin: 0; min-width: 0; font-size: 14px; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.request-reset { margin-top: auto; display: grid; gap: 10px; }
+.request-reset p { margin: 0; font-size: 14px; line-height: 1.5; }
+.reset-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.reset-actions .btn { flex: 1 1 150px; }
+
 .map-crosshair { display: none; position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 1; }
 .map-crosshair::before, .map-crosshair::after { content: ''; position: absolute; background: var(--fg); box-shadow: 0 0 0 1px var(--bg); }
 .map-crosshair::before { left: 13px; top: 0; width: 2px; height: 28px; }
@@ -353,6 +384,7 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 @media (max-width: 560px) { .ride-bar .who, .ride-bar .who-skeleton { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .spinner, .route-skeleton span, .fare-pending { animation: none; }
+  .ride-map .driver[data-mark='offered']::after { animation: none; opacity: 0; }
 }
 
 .route-loader { display: grid; justify-items: center; gap: 10px; }

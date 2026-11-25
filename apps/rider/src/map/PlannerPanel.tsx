@@ -1,5 +1,5 @@
 import type { PlaceResult, VehicleType } from '@thirrem/types';
-import type { CSSProperties } from 'react';
+import { type CSSProperties, useEffect, useRef } from 'react';
 import { formatDistance, formatDuration } from './format';
 import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
@@ -8,7 +8,7 @@ import type { PinSlot, Plan, PlanPoint } from './planner';
 import type { FareState } from './useFareQuote';
 import type { RouteState } from './useRoute';
 import { useStreetName } from './useStreetName';
-import { VehicleTypeList } from './VehicleTypeList';
+import { VEHICLE_TYPE_NAMES, VehicleTypeList } from './VehicleTypeList';
 
 interface PlannerPanelProps {
   plan: Plan;
@@ -25,6 +25,9 @@ interface PlannerPanelProps {
   onRetry(): void;
   onChooseVehicleType(type: VehicleType): void;
   onRetryFare(): void;
+  /** Set when the planner takes the place of a Ride Request, whose buttons held focus. */
+  focusTitle: boolean;
+  request: { ready: boolean; pending: boolean; error: string | null; onRequest(): void };
 }
 
 const SLOTS: Array<{ slot: PinSlot; label: string }> = [
@@ -53,12 +56,20 @@ function Glyph({ slot }: { slot: PinSlot }) {
   );
 }
 
-export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry, onChooseVehicleType, onRetryFare }: PlannerPanelProps) {
+export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry, onChooseVehicleType, onRetryFare, focusTitle, request }: PlannerPanelProps) {
   const near = plan.pickup ?? plan.dropoff;
   const streets: Record<PinSlot, StreetLookup> = { pickup: useStreetName(plan.pickup), dropoff: useStreetName(plan.dropoff) };
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusTitle) title.current?.focus({ preventScroll: true });
+  }, []);
+  // What is missing is already said by the route summary and the message on the map.
+  const requestable = Boolean(plan.pickup && plan.dropoff) && route.status === 'ready' && request.ready;
   return (
     <section className="planner" aria-labelledby="planner-title">
-      <h1 id="planner-title">Plan your ride</h1>
+      <h1 id="planner-title" ref={title} tabIndex={-1}>
+        Plan your ride
+      </h1>
       <p className="planner-lead">Search for a street or place, or click the map to drop a pin where there is no street name.</p>
 
       <ul className="pin-rows">
@@ -139,6 +150,18 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
           </button>
         </div>
       )}
+
+      <div className="request-ride">
+        <button type="button" className="btn primary" disabled={!requestable || request.pending} onClick={request.onRequest}>
+          {request.pending && <span className="spinner small" aria-hidden="true" />}
+          {request.pending ? 'Requesting…' : `Request ${VEHICLE_TYPE_NAMES[vehicleType]}`}
+        </button>
+        {request.error && (
+          <div className="form-error" role="alert">
+            <span>{request.error}</span>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

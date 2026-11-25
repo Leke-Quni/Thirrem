@@ -3,12 +3,8 @@ import type { CSSProperties } from 'react';
 import { formatFare } from './format';
 import type { FareState } from './useFareQuote';
 
-const VEHICLE_TYPES: Array<{ type: VehicleType; name: string }> = [
-  { type: 'economy', name: 'Economy' },
-  { type: 'comfort', name: 'Comfort' },
-  { type: 'xl', name: 'XL' },
-  { type: 'electric', name: 'Electric' },
-];
+export const VEHICLE_TYPE_NAMES: Record<VehicleType, string> = { economy: 'Economy', comfort: 'Comfort', xl: 'XL', electric: 'Electric' };
+const VEHICLE_TYPES = Object.entries(VEHICLE_TYPE_NAMES) as Array<[VehicleType, string]>;
 
 interface VehicleTypeListProps {
   fare: FareState;
@@ -32,7 +28,7 @@ export function VehicleTypeList({ fare, selected, onSelect }: VehicleTypeListPro
   return (
     <fieldset className="vehicle-types">
       <legend>Choose a Vehicle Type</legend>
-      {VEHICLE_TYPES.map(({ type, name }) => (
+      {VEHICLE_TYPES.map(([type, name]) => (
         <label key={type} className="vehicle-type">
           <input type="radio" name="vehicle-type" value={type} checked={selected === type} onChange={() => onSelect(type)} />
           <span className="vehicle-name">{name}</span>

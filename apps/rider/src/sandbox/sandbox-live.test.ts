@@ -17,7 +17,7 @@ class FakeSocket {
     this.closed = true;
   }
   drivers(list: SimulatedDriver[]) {
-    this.onmessage?.({ data: JSON.stringify({ event: 'drivers', data: { drivers: list } }) });
+    this.onmessage?.({ data: JSON.stringify({ event: 'drivers', data: { drivers: list, rideRequest: null } }) });
   }
 }
 
@@ -33,7 +33,7 @@ describe('liveUrl', () => {
 
 describe('watchDrivers', () => {
   let sockets: FakeSocket[];
-  const handlers = { onDrivers: vi.fn(), onLost: vi.fn(), onGone: vi.fn(), onStopped: vi.fn(), onDiscarded: vi.fn() };
+  const handlers = { onSandbox: vi.fn(), onLost: vi.fn(), onGone: vi.fn(), onStopped: vi.fn(), onDiscarded: vi.fn() };
   const watch = () =>
     watchDrivers({
       token: 'secret',
@@ -52,14 +52,14 @@ describe('watchDrivers', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('says who it is once connected, then passes on each set of positions', () => {
+  it('says who it is once connected, then passes on each report of the Sandbox', () => {
     watch();
 
     sockets[0]!.onopen?.();
     sockets[0]!.drivers([driver]);
 
     expect(sockets[0]!.sent).toEqual([{ event: 'watch', data: { token: 'secret' } }]);
-    expect(handlers.onDrivers).toHaveBeenCalledWith([driver]);
+    expect(handlers.onSandbox).toHaveBeenCalledWith({ drivers: [driver], rideRequest: null });
   });
 
   it('reconnects after a dropped connection, waiting longer each time', () => {
@@ -152,7 +152,7 @@ describe('watchDrivers', () => {
       sockets[1]!.drivers([driver]);
       sockets[1]!.onclose?.({ code: 1006 });
 
-      expect(handlers.onDrivers).toHaveBeenCalledWith([driver]);
+      expect(handlers.onSandbox).toHaveBeenCalledWith({ drivers: [driver], rideRequest: null });
       expect(handlers.onLost).toHaveBeenCalledOnce();
     });
   });
@@ -178,7 +178,7 @@ describe('watchDrivers', () => {
 
     expect(first.closed).toBe(true);
     expect(sockets).toHaveLength(1);
-    expect(handlers.onDrivers).not.toHaveBeenCalled();
+    expect(handlers.onSandbox).not.toHaveBeenCalled();
     expect(handlers.onLost).not.toHaveBeenCalled();
   });
 });

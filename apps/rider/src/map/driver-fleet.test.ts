@@ -1,19 +1,19 @@
 import type { SimulatedDriver } from '@thirrem/types';
 import { describe, expect, it } from 'vitest';
-import { DriverFleet, type Pose } from './driver-fleet';
+import { type CarMark, DriverFleet, type Pose } from './driver-fleet';
 
 const METRE = 1 / 111_195;
 const driver = (id: string, northM = 0, heading = 0): SimulatedDriver => ({ id, vehicleType: 'economy', heading, lat: northM * METRE, lon: 0, available: true });
 
 function fleet({ reducedMotion = false } = {}) {
-  const cars: Array<{ pose: Pose; removed: boolean }> = [];
+  const cars: Array<{ pose: Pose; removed: boolean; mark: CarMark | null }> = [];
   let time = 0;
   let frames: Array<() => void> = [];
   const subject = new DriverFleet({
     createCar: (pose) => {
-      const car = { pose, removed: false };
+      const car = { pose, removed: false, mark: null as CarMark | null };
       cars.push(car);
-      return { moveTo: (next) => (car.pose = next), remove: () => (car.removed = true) };
+      return { moveTo: (next) => (car.pose = next), mark: (mark) => (car.mark = mark), remove: () => (car.removed = true) };
     },
     requestFrame: (draw) => frames.push(draw),
     cancelFrame: () => (frames = []),
@@ -126,5 +126,15 @@ describe('DriverFleet', () => {
 
     expect(cars[0]!.removed).toBe(true);
     expect(waiting()).toBe(0);
+  });
+
+  it('marks the cars it is told to, and clears the marks that are gone', () => {
+    const { subject, cars } = fleet();
+    subject.show([driver('a'), driver('b')], new Map([['a', 'offered'], ['b', 'offered']]));
+    expect(cars.map((car) => car.mark)).toEqual(['offered', 'offered']);
+
+    subject.show([driver('a'), driver('b')], new Map([['b', 'matched']]));
+
+    expect(cars.map((car) => car.mark)).toEqual([null, 'matched']);
   });
 });

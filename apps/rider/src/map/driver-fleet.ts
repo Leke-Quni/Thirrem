@@ -10,8 +10,12 @@ const METRES_PER_DEGREE = 111_195;
 
 export type Pose = Pick<SimulatedDriver, 'lat' | 'lon' | 'heading'>;
 
+/** How a car stands in the Rider's open Ride Request. */
+export type CarMark = 'offered' | 'matched';
+
 export interface Car {
   moveTo(pose: Pose): void;
+  mark(mark: CarMark | null): void;
   remove(): void;
 }
 
@@ -49,7 +53,7 @@ export class DriverFleet {
 
   constructor(private readonly deps: FleetDependencies) {}
 
-  show(drivers: SimulatedDriver[]): void {
+  show(drivers: SimulatedDriver[], marks: ReadonlyMap<string, CarMark> = new Map()): void {
     const gone = new Set(this.cars.keys());
     for (const { id, lat, lon, heading } of drivers) {
       gone.delete(id);
@@ -57,6 +61,7 @@ export class DriverFleet {
       const tracked = this.cars.get(id);
       if (!tracked) this.cars.set(id, { car: this.deps.createCar(target), shown: target, target, glide: null });
       else this.send(tracked, target);
+      this.cars.get(id)!.car.mark(marks.get(id) ?? null);
     }
     for (const id of gone) {
       this.cars.get(id)!.car.remove();
