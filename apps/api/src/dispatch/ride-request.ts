@@ -1,9 +1,10 @@
 import type { Coordinate, MatchedDriver, RideRequest, RideRequestStatus, SimulatedDriver, VehicleType } from '@thirrem/types';
 import type { StoredApproach } from './approach.js';
 import { type CancelHistory, type Cancelling, cancellation } from './cancel-limit.js';
+import type { Trip } from '../fares/fare-calculator.js';
 import { type DriveRoute, driveProgress } from './drive.js';
 import { searchAreas } from './quadtree.js';
-import { isCompleted, isPickedUp } from './ride.js';
+import { completedRoute, isCompleted, isPickedUp } from './ride.js';
 
 export interface RideRequestInput {
   pickup: Coordinate;
@@ -90,6 +91,17 @@ export function isUnderWay(rideRequest: StoredRideRequest, resumedAtMs: number, 
 /** A Ride Request is open until the Rider is picked up, or it fails. */
 export function isOpen(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): boolean {
   return isUnderWay(rideRequest, resumedAtMs, nowMs) && !isPickedUp(rideRequest, resumedAtMs, nowMs);
+}
+
+/** How a Ride Request or its Ride has ended, as far as its Fare goes: the trip to be charged for, or nothing. */
+export type JourneyEnd = { charge: Trip } | 'release';
+
+/** How it has ended by `nowMs`, or null while it is under way. It cannot finish once no route is to be had. */
+export function journeyEnd(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): JourneyEnd | null {
+  const travelled = completedRoute(rideRequest, resumedAtMs, nowMs);
+  if (travelled) return { charge: travelled };
+  const routeless = rideRequest.approach?.route === 'unavailable' || rideRequest.rideRoute === 'unavailable';
+  return routeless || statusAt(rideRequest, nowMs) === 'failed' ? 'release' : null;
 }
 
 /** The Ride Request as the Rider is told of it at `nowMs`. `driver` is the one matched, or null if none is. */

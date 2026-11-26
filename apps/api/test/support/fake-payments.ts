@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type Card, PaymentService, PaymentServiceError } from '../../src/payments/payment.service.js';
+import { type Card, HoldLostError, type HoldRequest, type HoldStatus, PaymentService, PaymentServiceError, type PlacedHold } from '../../src/payments/payment.service.js';
 
 /** A card as a test describes it. Unless told otherwise, the same brand and digits are the same card. */
 export type NewCard = Omit<Card, 'ref' | 'fingerprint'> & { fingerprint?: string };
@@ -11,6 +11,10 @@ export class FakePaymentService extends PaymentService {
   readonly customers: string[] = [];
   readonly forgotten: string[] = [];
   failing = false;
+  /** What the next holds come to, as a bank would decide. */
+  holdOutcome: PlacedHold['status'] = 'held';
+  /** Every hold asked for, in order, as it stands now. A declined one is among them. */
+  readonly holds: Array<HoldRequest & { ref: string; status: HoldStatus; chargedCents: number | null }> = [];
   private readonly customerByAccount = new Map<string, string>();
   private readonly setups = new Map<string, { customerRef: string; card: Card | null }>();
   private readonly cards: Array<Card & { customerRef: string }> = [];
@@ -51,6 +55,47 @@ export class FakePaymentService extends PaymentService {
   async forgetCard(ref: string): Promise<void> {
     this.check();
     this.forgotten.push(ref);
+  }
+
+  async placeHold(request: HoldRequest): Promise<PlacedHold> {
+    this.check();
+    const ref = `pi_${randomUUID()}`;
+    const status = this.holdOutcome;
+    this.holds.push({ ...request, ref, status, chargedCents: null });
+    if (status === 'declined') return { status, message: 'Your card was declined.' };
+    return status === 'held' ? { status, ref } : { status, ref, clientSecret: `${ref}_secret_fake` };
+  }
+
+  async findHold(ref: string): Promise<HoldStatus> {
+    this.check();
+    return this.hold(ref).status;
+  }
+
+  async captureHold(ref: string, amountCents: number): Promise<void> {
+    this.check();
+    const hold = this.hold(ref);
+    if (hold.status === 'charged') return;
+    if (hold.status !== 'held') throw new HoldLostError(`Cannot charge a hold that is ${hold.status}`);
+    if (amountCents > hold.amountCents) throw new PaymentServiceError('More than was held');
+    Object.assign(hold, { status: 'charged', chargedCents: amountCents });
+  }
+
+  async releaseHold(ref: string): Promise<void> {
+    this.check();
+    const hold = this.hold(ref);
+    if (hold.status === 'charged') throw new PaymentServiceError('A charged hold cannot be released');
+    hold.status = 'released';
+  }
+
+  /** What the bank's check ends in, once the Rider has been through it. */
+  finishVerification(clientSecret: string, passed: boolean): void {
+    this.hold(this.setupId(clientSecret)).status = passed ? 'held' : 'declined';
+  }
+
+  private hold(ref: string) {
+    const hold = this.holds.find((each) => each.ref === ref);
+    if (!hold) throw new PaymentServiceError(`No hold ${ref}`);
+    return hold;
   }
 
   setupId(clientSecret: string): string {

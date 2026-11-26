@@ -12,13 +12,18 @@ import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
 import { CancelHistoryRepository } from './dispatch/cancel-history.repository.js';
 import { InMemoryCancelHistoryRepository } from './dispatch/in-memory-cancel-history.repository.js';
+import { RidePaymentLedger } from './dispatch/ride-payment-ledger.js';
 import { RideRequestService } from './dispatch/ride-request.service.js';
+import { RideSettlementTimer } from './dispatch/ride-settlement-timer.js';
 import { RiderRideRequestController } from './dispatch/rider-ride-request.controller.js';
 import { PaymentMethodRepository } from './payments/payment-method.repository.js';
 import { PaymentMethodService } from './payments/payment-method.service.js';
 import { PaymentService } from './payments/payment.service.js';
 import { PgPaymentMethodRepository } from './payments/pg-payment-method.repository.js';
 import { RiderPaymentMethodController } from './payments/rider-payment-method.controller.js';
+import { PgRidePaymentRepository } from './payments/pg-ride-payment.repository.js';
+import { RidePaymentRepository } from './payments/ride-payment.repository.js';
+import { RidePaymentService } from './payments/ride-payment.service.js';
 import { StripePaymentService } from './payments/stripe-payment.service.js';
 import { UnavailablePaymentService } from './payments/unavailable-payment.service.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
@@ -34,6 +39,7 @@ import { AuthRateLimitGuard, FareRateLimitGuard, PaymentRateLimitGuard, RATE_LIM
 import { AreaRepository } from './sandbox/area.repository.js';
 import { AreaService } from './sandbox/area.service.js';
 import { InMemoryAreaRepository } from './sandbox/in-memory-area.repository.js';
+import { JourneyLedger } from './sandbox/journey-ledger.js';
 import { InMemorySandboxRepository } from './sandbox/in-memory-sandbox.repository.js';
 import { OsrmRoadService } from './sandbox/osrm-road-service.js';
 import { Pacer, SystemPacer } from './sandbox/pacer.js';
@@ -67,6 +73,10 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     },
     PaymentRateLimitGuard,
     PaymentMethodService,
+    RidePaymentService,
+    { provide: JourneyLedger, useClass: RidePaymentLedger },
+    RideSettlementTimer,
+    { provide: RidePaymentRepository, useClass: PgRidePaymentRepository },
     { provide: PaymentMethodRepository, useClass: PgPaymentMethodRepository },
     {
       provide: PaymentService,

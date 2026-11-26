@@ -23,6 +23,13 @@ export class StraightRoutingService extends RoutingService {
   held: Promise<void> | null = null;
   /** Points the line goes through on its way, as a road with bends does. */
   via: Coordinate[] = [];
+  metresPerSecond = 10;
+  private next?: () => void;
+
+  /** Runs `change` once the next route has been answered. */
+  afterFirst(change: () => void): void {
+    this.next = change;
+  }
 
   async route(from: Coordinate, to: Coordinate): Promise<RouteResult | null> {
     this.requests.push({ from, to });
@@ -30,6 +37,10 @@ export class StraightRoutingService extends RoutingService {
     if (this.outcome === 'down') throw new Error('Routing is down');
     if (this.outcome === 'no route') return null;
     const length = distanceM(from, to);
-    return { distanceM: length, durationS: length / 10, geometry: [from, ...this.via, to].map(({ lat, lon }) => [lon, lat]) };
+    const found: RouteResult = { distanceM: length, durationS: length / this.metresPerSecond, geometry: [from, ...this.via, to].map(({ lat, lon }) => [lon, lat]) };
+    const next = this.next;
+    this.next = undefined;
+    next?.();
+    return found;
   }
 }

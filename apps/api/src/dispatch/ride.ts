@@ -20,7 +20,7 @@ export function isPickedUp(rideRequest: StoredRideRequest, resumedAtMs: number, 
 }
 
 /** What was travelled on a completed Ride: its route driven to the Drop-off Point, or as far as the Driver went before stopping early. */
-function completedRoute(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number) {
+export function completedRoute(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number) {
   if (!isPickedUp(rideRequest, resumedAtMs, nowMs)) return undefined;
   const route = rideRequest.rideRoute ?? null;
   const pickedUpAtMs = pickupAtMs(rideRequest, resumedAtMs)!;

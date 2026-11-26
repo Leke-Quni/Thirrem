@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import Stripe from 'stripe';
 import { describe, expect, it } from 'vitest';
+import { HoldLostError } from '../src/payments/payment.service.js';
 import { StripePaymentService, toCard } from '../src/payments/stripe-payment.service.js';
 
 const envFile = fileURLToPath(new URL('../../../.env', import.meta.url));
@@ -74,5 +75,65 @@ describe.skipIf(!secretKey?.includes('_test_'))('Stripe in test mode', () => {
     await payments.forgetCard(card.ref);
 
     expect((await stripe().customers.listPaymentMethods(customer)).data).toEqual([]);
+  });
+
+  /** A customer with one of Stripe's test cards saved, as the Rider's default method would be. */
+  async function withCard(testCard: string) {
+    const customerRef = await service().createCustomer(randomUUID());
+    const { id: methodRef } = await stripe().paymentMethods.attach(testCard, { customer: customerRef });
+    return { customerRef, methodRef };
+  }
+
+  const hold = async (testCard: string, amountCents = 500) => service().placeHold({ ...(await withCard(testCard)), amountCents, reference: randomUUID() });
+
+  const intent = (ref: string) => stripe().paymentIntents.retrieve(ref);
+
+  it('holds an amount without charging it, then charges part of it and releases the rest', async () => {
+    const payments = service();
+    const placed = await hold('pm_card_visa');
+    expect(placed).toEqual({ status: 'held', ref: expect.stringMatching(/^pi_/) });
+    const ref = (placed as { ref: string }).ref;
+    expect(await intent(ref)).toMatchObject({ amount: 500, currency: 'eur', amount_capturable: 500, amount_received: 0 });
+    expect(await payments.findHold(ref)).toBe('held');
+
+    await payments.captureHold(ref, 320);
+    await payments.captureHold(ref, 320);
+
+    expect(await intent(ref)).toMatchObject({ status: 'succeeded', amount_received: 320, amount_capturable: 0 });
+    expect(await payments.findHold(ref)).toBe('charged');
+  });
+
+  it('releases a whole hold, more than once if asked, and cannot charge it afterwards', async () => {
+    const payments = service();
+    const { ref } = (await hold('pm_card_visa')) as { ref: string };
+
+    await payments.releaseHold(ref);
+    await payments.releaseHold(ref);
+
+    expect(await intent(ref)).toMatchObject({ status: 'canceled', amount_received: 0 });
+    expect(await payments.findHold(ref)).toBe('released');
+    await expect(payments.captureHold(ref, 100)).rejects.toThrow(HoldLostError);
+  });
+
+  it('says why a card was declined, and holds nothing', async () => {
+    expect(await hold('pm_card_chargeCustomerFail')).toEqual({ status: 'declined', message: expect.stringMatching(/declined/i) });
+  });
+
+  it('asks for the bank to verify a card that needs it', async () => {
+    const placed = await hold('pm_card_authenticationRequired');
+
+    expect(placed).toEqual({ status: 'verification', ref: expect.stringMatching(/^pi_/), clientSecret: expect.stringContaining('_secret_') });
+    expect(await service().findHold((placed as { ref: string }).ref)).toBe('verification');
+  });
+
+  it('keeps a hold chargeable after its card is forgotten', async () => {
+    const payments = service();
+    const card = await withCard('pm_card_visa');
+    const { ref } = (await payments.placeHold({ ...card, amountCents: 500, reference: randomUUID() })) as { ref: string };
+
+    await payments.forgetCard(card.methodRef);
+    await payments.captureHold(ref, 500);
+
+    expect(await intent(ref)).toMatchObject({ status: 'succeeded', amount_received: 500 });
   });
 });

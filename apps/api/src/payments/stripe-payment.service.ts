@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { Wallet } from '@thirrem/types';
 import Stripe from 'stripe';
 import type { StripeKeys } from '../config/app-config.js';
-import { type Card, PaymentService, PaymentServiceError } from './payment.service.js';
+import { type Card, HoldLostError, type HoldRequest, type HoldStatus, PaymentService, PaymentServiceError, type PlacedHold } from './payment.service.js';
 
 /** A saved card has to be chargeable later, when the Rider is not there. Wallets are cards to Stripe. */
 const CARD_SETUP = { usage: 'off_session', allowed_payment_method_types: ['card'] } satisfies Stripe.SetupIntentCreateParams;
@@ -14,6 +14,16 @@ export function toCard(method: Stripe.PaymentMethod): Card {
   // Stripe gives every card a fingerprint; without one a card is only ever the same as itself.
   return { ref: method.id, brand, last4, wallet: toWallet(wallet?.type), fingerprint: fingerprint ?? method.id };
 }
+
+const HOLD_STATUSES: Record<Stripe.PaymentIntent.Status, HoldStatus> = {
+  requires_capture: 'held',
+  requires_action: 'verification',
+  requires_confirmation: 'verification',
+  processing: 'verification',
+  requires_payment_method: 'declined',
+  succeeded: 'charged',
+  canceled: 'released',
+};
 
 const isMissing = (error: unknown) => error instanceof Stripe.errors.StripeError && error.code === 'resource_missing';
 
@@ -80,10 +90,65 @@ export class StripePaymentService extends PaymentService {
     });
   }
 
+  placeHold({ customerRef, methodRef, amountCents, reference }: HoldRequest): Promise<PlacedHold> {
+    return this.call(async () => {
+      try {
+        const intent = await this.stripe.paymentIntents.create(
+          {
+            amount: amountCents,
+            currency: 'eur',
+            customer: customerRef,
+            payment_method: methodRef,
+            allowed_payment_method_types: ['card'],
+            capture_method: 'manual',
+            confirm: true,
+          },
+          { idempotencyKey: `ride-hold-${reference}` },
+        );
+        if (intent.status === 'requires_capture') return { status: 'held', ref: intent.id };
+        if (intent.status === 'requires_action') return { status: 'verification', ref: intent.id, clientSecret: intent.client_secret! };
+        throw new Error(`A new hold was left ${intent.status}`);
+      } catch (error) {
+        if (!(error instanceof Stripe.errors.StripeCardError)) throw error;
+        // A declined intent could be confirmed again, so it is closed.
+        if (error.payment_intent) await this.stripe.paymentIntents.cancel(error.payment_intent.id);
+        return { status: 'declined', message: error.message };
+      }
+    });
+  }
+
+  findHold(ref: string): Promise<HoldStatus> {
+    return this.call(async () => HOLD_STATUSES[(await this.stripe.paymentIntents.retrieve(ref)).status]);
+  }
+
+  captureHold(ref: string, amountCents: number): Promise<void> {
+    return this.call(async () => {
+      try {
+        await this.stripe.paymentIntents.capture(ref, { amount_to_capture: amountCents });
+      } catch (error) {
+        const { status } = await this.stripe.paymentIntents.retrieve(ref);
+        if (status === 'succeeded') return;
+        if (status === 'canceled') throw new HoldLostError('The hold was released before it could be charged');
+        throw error;
+      }
+    });
+  }
+
+  releaseHold(ref: string): Promise<void> {
+    return this.call(async () => {
+      try {
+        await this.stripe.paymentIntents.cancel(ref);
+      } catch (error) {
+        if ((await this.stripe.paymentIntents.retrieve(ref)).status !== 'canceled') throw error;
+      }
+    });
+  }
+
   private async call<T>(request: () => Promise<T>): Promise<T> {
     try {
       return await request();
     } catch (error) {
+      if (error instanceof PaymentServiceError) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Stripe request failed: ${message}`);
       throw new PaymentServiceError(message);

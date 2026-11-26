@@ -27,4 +27,20 @@ export class UnavailablePaymentService extends PaymentService {
   async forgetCard(): Promise<never> {
     throw new PaymentsNotSetUpError();
   }
+
+  async placeHold(): Promise<never> {
+    throw new PaymentsNotSetUpError();
+  }
+
+  async findHold(): Promise<never> {
+    throw new PaymentsNotSetUpError();
+  }
+
+  async captureHold(): Promise<never> {
+    throw new PaymentsNotSetUpError();
+  }
+
+  async releaseHold(): Promise<never> {
+    throw new PaymentsNotSetUpError();
+  }
 }

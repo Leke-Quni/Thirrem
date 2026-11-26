@@ -15,6 +15,25 @@ export class PaymentServiceError extends Error {}
 
 export class PaymentsNotSetUpError extends PaymentServiceError {}
 
+/** A hold that can no longer be charged, as it was released or expired. */
+export class HoldLostError extends PaymentServiceError {}
+
+export interface HoldRequest {
+  customerRef: string;
+  methodRef: string;
+  amountCents: number;
+  /** Asking again with the same one places no second hold. */
+  reference: string;
+}
+
+export type PlacedHold =
+  | { status: 'held'; ref: string }
+  /** The Rider's bank wants to check it is them, which the app does with `clientSecret`. */
+  | { status: 'verification'; ref: string; clientSecret: string }
+  | { status: 'declined'; message: string };
+
+export type HoldStatus = PlacedHold['status'] | 'charged' | 'released';
+
 export abstract class PaymentService {
   /** The key the app shows Stripe's card form with, or null when payments are not set up. */
   abstract readonly publishableKey: string | null;
@@ -28,4 +47,11 @@ export abstract class PaymentService {
   abstract listCards(customerRef: string): Promise<Card[]>;
   /** Succeeds for a card that is already forgotten. */
   abstract forgetCard(ref: string): Promise<void>;
+  /** Reserves an amount in euro cents on a saved card without charging it. */
+  abstract placeHold(request: HoldRequest): Promise<PlacedHold>;
+  abstract findHold(ref: string): Promise<HoldStatus>;
+  /** Charges up to the amount held and releases the rest. Succeeds for a hold already charged. */
+  abstract captureHold(ref: string, amountCents: number): Promise<void>;
+  /** Succeeds for a hold already released. */
+  abstract releaseHold(ref: string): Promise<void>;
 }

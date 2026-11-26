@@ -191,6 +191,12 @@ export interface PaymentMethodsResponse {
   methods: PaymentMethod[];
 }
 
+/** The 402 answer to a Ride Request whose quoted Fare could not be held. Nobody has been asked to take it. */
+export type PaymentRefusedResponse =
+  | { code: 'PAYMENT_METHOD_REQUIRED' | 'PAYMENT_DECLINED'; message: string }
+  /** The Rider's bank has to verify them first. The app does that with `clientSecret`, then sends the request again with `holdId`, whether or not it passed. */
+  | { code: 'PAYMENT_VERIFICATION'; message: string; holdId: string; clientSecret: string; publishableKey: string };
+
 export interface CardSetupResponse {
   clientSecret: string;
 }
