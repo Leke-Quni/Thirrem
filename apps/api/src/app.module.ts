@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AccountRepository } from './auth/account.repository.js';
 import { AuthService } from './auth/auth.service.js';
+import { DriverAuthController } from './auth/driver-auth.controller.js';
 import { PasswordHasher, ScryptPasswordHasher } from './auth/password-hasher.js';
 import { PgAccountRepository } from './auth/pg-account.repository.js';
 import { RiderAuthController } from './auth/rider-auth.controller.js';
@@ -43,7 +44,7 @@ import { SimulationClock, SystemClock } from './simulation-clock/simulation-cloc
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, DriverAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,

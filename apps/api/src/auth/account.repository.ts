@@ -1,4 +1,4 @@
-export type AppName = 'rider';
+export type AppName = 'rider' | 'driver';
 
 export interface Account {
   id: string;
