@@ -44,7 +44,8 @@ export function createAuth(app: AppName, apiBaseUrl: string) {
           if (!current) return;
           if (shouldEndSession(error)) {
             localStorage.removeItem(TOKEN_KEY);
-            if (current) setExpired(true);
+            setEmail(null);
+            setExpired(true);
           } else setUnreachable(true);
         })
         .finally(() => {
