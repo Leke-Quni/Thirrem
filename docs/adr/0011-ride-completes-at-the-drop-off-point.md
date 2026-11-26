@@ -1,6 +1,6 @@
 # Complete the Ride as the vehicle reaches the Drop-off Point
 
-A Ride is completed once the vehicle has driven its route to the Drop-off Point. As with the pickup (ADR 0010), that is worked out from the clock when asked for, so nothing ticks, and a stopped Sandbox adds nothing to the distance driven.
+A Ride is completed once the vehicle has driven its route to the Drop-off Point. As with the pickup (ADR 0010), that is worked out from the clock when asked for, so nothing ticks, and a stopped Sandbox adds nothing to the distance driven. It also completes where the Driver stops when the Rider asks to end it early (ADR 0013).
 
 The final Fare is the Vehicle Type's formula (ADR 0004) applied to the distance and time of the Ride's route. It is worked out when asked for and sent as `finalFare` on the Ride, which is null until the Ride has completed. We rejected reusing the Fare Quote, as a Fare follows the distance and time travelled.
 
