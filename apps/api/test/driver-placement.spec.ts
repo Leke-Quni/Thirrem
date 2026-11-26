@@ -34,9 +34,9 @@ describe('distanceM', () => {
 
 describe('Placing simulated Drivers', () => {
   const rings = [
-    { fromM: 0, toM: 1000, total: 20, perType: 5 },
-    { fromM: 1000, toM: 4000, total: 12, perType: 3 },
-    { fromM: 4000, toM: 10_000, total: 8, perType: 2 },
+    { fromM: 0, toM: 1000, total: 20, perType: { economy: 8, comfort: 4, xl: 4, electric: 4 } },
+    { fromM: 1000, toM: 4000, total: 12, perType: { economy: 5, comfort: 3, xl: 2, electric: 2 } },
+    { fromM: 4000, toM: 10_000, total: 8, perType: { economy: 4, comfort: 2, xl: 1, electric: 1 } },
   ];
 
   it.each([
@@ -54,12 +54,12 @@ describe('Placing simulated Drivers', () => {
     }
   });
 
-  it('splits every ring equally between the four Vehicle Types', () => {
+  it('makes more Drivers in every ring Economy than any other Vehicle Type', () => {
     const drivers = place();
 
     for (const { fromM, toM, perType } of rings) {
       const types = drivers.filter(inRing(gjakova, fromM, toM)).map((driver) => driver.vehicleType);
-      for (const type of ['economy', 'comfort', 'xl', 'electric']) expect(types.filter((item) => item === type)).toHaveLength(perType);
+      for (const [type, count] of Object.entries(perType)) expect(types.filter((item) => item === type)).toHaveLength(count);
     }
   });
 

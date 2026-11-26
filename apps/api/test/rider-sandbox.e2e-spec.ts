@@ -31,13 +31,13 @@ describe("The Rider's Sandbox and its simulated Drivers", () => {
     await app.close();
   });
 
-  it('starts a Sandbox with 40 Drivers within 10 km, 10 of each Vehicle Type', async () => {
+  it('starts a Sandbox with 40 Drivers within 10 km, more of them Economy than any other Vehicle Type', async () => {
     const { body } = await open(await signUp(app)).expect(200);
 
     expect(body.drivers).toHaveLength(40);
     for (const driver of body.drivers) expect(distanceM(centre, driver)).toBeLessThanOrEqual(10_000);
-    for (const type of ['economy', 'comfort', 'xl', 'electric']) {
-      expect(body.drivers.filter((driver: { vehicleType: string }) => driver.vehicleType === type)).toHaveLength(10);
+    for (const [type, count] of Object.entries({ economy: 17, comfort: 9, xl: 7, electric: 7 })) {
+      expect(body.drivers.filter((driver: { vehicleType: string }) => driver.vehicleType === type)).toHaveLength(count);
     }
     expect(Object.keys(body.drivers[0]).sort()).toEqual(['available', 'heading', 'id', 'lat', 'lon', 'vehicleType']);
   });
