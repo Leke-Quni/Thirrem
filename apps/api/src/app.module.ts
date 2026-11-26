@@ -16,6 +16,9 @@ import { RidePaymentLedger } from './dispatch/ride-payment-ledger.js';
 import { RideRequestService } from './dispatch/ride-request.service.js';
 import { RideSettlementTimer } from './dispatch/ride-settlement-timer.js';
 import { RiderRideRequestController } from './dispatch/rider-ride-request.controller.js';
+import { RiderUnpaidFareController } from './dispatch/rider-unpaid-fare.controller.js';
+import { UnpaidFareService } from './dispatch/unpaid-fare.service.js';
+import { FarePaymentService } from './payments/fare-payment.service.js';
 import { PaymentMethodRepository } from './payments/payment-method.repository.js';
 import { PaymentMethodService } from './payments/payment-method.service.js';
 import { PaymentService } from './payments/payment.service.js';
@@ -56,7 +59,7 @@ import { SimulationClock, SystemClock } from './simulation-clock/simulation-cloc
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController, RiderPaymentMethodController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController, RiderPaymentMethodController, RiderUnpaidFareController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -74,8 +77,10 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     PaymentRateLimitGuard,
     PaymentMethodService,
     RidePaymentService,
+    FarePaymentService,
     { provide: JourneyLedger, useClass: RidePaymentLedger },
     RideSettlementTimer,
+    UnpaidFareService,
     { provide: RidePaymentRepository, useClass: PgRidePaymentRepository },
     { provide: PaymentMethodRepository, useClass: PgPaymentMethodRepository },
     {

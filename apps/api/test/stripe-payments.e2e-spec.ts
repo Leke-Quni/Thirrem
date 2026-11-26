@@ -21,6 +21,31 @@ describe('A card as Stripe describes it', () => {
   });
 });
 
+describe('A charge Stripe refuses', () => {
+  /** Stripe, as it answers a capture with a card error and leaves the hold standing. */
+  function refusing() {
+    const payments = new StripePaymentService({ secretKey: 'sk_test_unused', publishableKey: 'pk_test_unused' });
+    const cancelled: string[] = [];
+    const paymentIntents = {
+      capture: async () => {
+        throw new Stripe.errors.StripeCardError({ type: 'card_error', message: 'Your card was declined.' });
+      },
+      retrieve: async () => ({ status: 'requires_capture' }),
+      cancel: async (ref: string) => void cancelled.push(ref),
+    };
+    Object.assign(payments, { stripe: { paymentIntents } });
+    return { payments, cancelled };
+  }
+
+  it('is a Fare to be paid again, and its hold is released', async () => {
+    const { payments, cancelled } = refusing();
+
+    await expect(payments.captureHold('pi_1', 500)).rejects.toThrow(HoldLostError);
+
+    expect(cancelled).toEqual(['pi_1']);
+  });
+});
+
 // These talk to Stripe test mode, so they run only where a test key is configured.
 describe.skipIf(!secretKey?.includes('_test_'))('Stripe in test mode', () => {
   const service = () => new StripePaymentService({ secretKey: secretKey!, publishableKey: 'pk_test_unused' });

@@ -18,6 +18,7 @@ interface RidePaymentRow {
   charge_cents: number | null;
   requested_at: Date;
   settled_at: Date | null;
+  retried_at: Date | null;
 }
 
 const toPayment = (row: RidePaymentRow): RidePayment => ({
@@ -34,12 +35,13 @@ const toPayment = (row: RidePaymentRow): RidePayment => ({
   chargeCents: row.charge_cents,
   requestedAtMs: row.requested_at.getTime(),
   settledAtMs: row.settled_at?.getTime() ?? null,
+  retriedAtMs: row.retried_at?.getTime() ?? null,
 });
 
 const toDate = (ms: number | null) => (ms === null ? null : new Date(ms));
 
 /** The columns a change sets. */
-function columns({ rideRequestId, holdRef, status, trip, chargeCents, settledAtMs }: RidePaymentChanges): Array<[string, unknown]> {
+function columns({ rideRequestId, holdRef, status, trip, chargeCents, settledAtMs, retriedAtMs }: RidePaymentChanges): Array<[string, unknown]> {
   const all: Array<[string, unknown]> = [
     ['ride_request_id', rideRequestId],
     ['stripe_intent_ref', holdRef],
@@ -48,6 +50,7 @@ function columns({ rideRequestId, holdRef, status, trip, chargeCents, settledAtM
     ['duration_s', trip?.durationS],
     ['charge_cents', chargeCents],
     ['settled_at', settledAtMs === undefined ? undefined : toDate(settledAtMs)],
+    ['retried_at', retriedAtMs === undefined ? undefined : toDate(retriedAtMs)],
   ];
   return all.filter(([, value]) => value !== undefined);
 }
@@ -83,13 +86,21 @@ export class PgRidePaymentRepository extends RidePaymentRepository {
     return rows[0] ? toPayment(rows[0]) : null;
   }
 
-  async findOpen(accountId: string): Promise<RidePayment[]> {
-    const { rows } = await this.database.query<RidePaymentRow>('SELECT * FROM ride_payments WHERE account_id = $1 AND status = ANY($2) ORDER BY requested_at', [accountId, OPEN_STATUSES]);
-    return rows.map(toPayment);
+  findOpen(accountId: string): Promise<RidePayment[]> {
+    return this.findByStatus(accountId, OPEN_STATUSES);
+  }
+
+  findUnpaid(accountId: string): Promise<RidePayment[]> {
+    return this.findByStatus(accountId, ['unpaid', 'retrying']);
   }
 
   async findAccountsWithOpen(): Promise<string[]> {
     const { rows } = await this.database.query<{ account_id: string }>('SELECT DISTINCT account_id FROM ride_payments WHERE status = ANY($1)', [OPEN_STATUSES]);
     return rows.map((row) => row.account_id);
+  }
+
+  private async findByStatus(accountId: string, statuses: readonly RidePaymentStatus[]): Promise<RidePayment[]> {
+    const { rows } = await this.database.query<RidePaymentRow>('SELECT * FROM ride_payments WHERE account_id = $1 AND status = ANY($2) ORDER BY requested_at', [accountId, statuses]);
+    return rows.map(toPayment);
   }
 }

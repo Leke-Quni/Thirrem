@@ -29,7 +29,7 @@ export async function withBankVerification<T>(
 export interface RequestFailure {
   message: string;
   /** Set when the Rider's payment method is what has to change. */
-  payment?: 'PAYMENT_METHOD_REQUIRED' | 'PAYMENT_DECLINED';
+  payment?: Exclude<PaymentRefusedResponse['code'], 'PAYMENT_VERIFICATION'>;
 }
 
 /** What to tell the Rider about a request that failed, and `fallback` if the failure says nothing. */

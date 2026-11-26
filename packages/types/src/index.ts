@@ -193,9 +193,23 @@ export interface PaymentMethodsResponse {
 
 /** The 402 answer to a Ride Request whose quoted Fare could not be held. Nobody has been asked to take it. */
 export type PaymentRefusedResponse =
-  | { code: 'PAYMENT_METHOD_REQUIRED' | 'PAYMENT_DECLINED'; message: string }
+  | { code: 'PAYMENT_METHOD_REQUIRED' | 'PAYMENT_DECLINED' | 'FARE_UNPAID'; message: string }
   /** The Rider's bank has to verify them first. The app does that with `clientSecret`, then sends the request again with `holdId`, whether or not it passed. */
   | { code: 'PAYMENT_VERIFICATION'; message: string; holdId: string; clientSecret: string; publishableKey: string };
+
+/** A Fare that is due for a Ride and could not be charged. No Ride can be requested until it is paid. */
+export interface UnpaidFare extends Fare {
+  id: string;
+  vehicleType: VehicleType;
+  pickupName: string;
+  dropoffName: string;
+  /** When the Ride was requested. */
+  requestedAt: string;
+}
+
+export interface UnpaidFaresResponse {
+  fares: UnpaidFare[];
+}
 
 export interface CardSetupResponse {
   clientSecret: string;

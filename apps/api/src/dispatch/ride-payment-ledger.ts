@@ -3,14 +3,11 @@ import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
 import { calculateFare } from '../fares/fare-calculator.js';
 import type { RidePayment } from '../payments/ride-payment.repository.js';
-import { RidePaymentService } from '../payments/ride-payment.service.js';
+import { RidePaymentService, VERIFY_WITHIN_MS } from '../payments/ride-payment.service.js';
 import { JourneyLedger } from '../sandbox/journey-ledger.js';
 import { sandboxStatus, stoppedAtMs } from '../sandbox/sandbox-lifecycle.js';
 import type { Sandbox } from '../sandbox/sandbox.repository.js';
 import { type JourneyEnd, journeyEnd } from './ride-request.js';
-
-/** How long a Rider has to pass their bank's check before the hold waiting on it is released. */
-const VERIFY_WITHIN_MS = 10 * 60_000;
 
 /** What the payment's journey came to, or null while it is still going. */
 function endOf({ rideRequestId }: RidePayment, sandbox: Sandbox | null, nowMs: number, dropping: boolean): JourneyEnd | null {

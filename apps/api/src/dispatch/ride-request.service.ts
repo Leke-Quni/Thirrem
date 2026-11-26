@@ -19,6 +19,7 @@ import { cancellation, pausedForS } from './cancel-limit.js';
 import { routed } from './drive.js';
 import { endRequestedRide, isCompleted, isPickedUp, matchedDriverPosition, rideProgress } from './ride.js';
 import { broadcast, cancelling, firstToAccept, isOpen, isUnderWay, matchedDriverId, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
+import { UnpaidFareService } from './unpaid-fare.service.js';
 
 /** How long to wait before each further try, when the routing server cannot be had. */
 const ROUTE_RETRY_AFTER_MS = [2_000, 5_000];
@@ -61,6 +62,7 @@ export class RideRequestService {
     private readonly cancels: CancelHistoryRepository,
     private readonly payments: RidePaymentService,
     private readonly ledger: JourneyLedger,
+    private readonly unpaidFares: UnpaidFareService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -109,6 +111,9 @@ export class RideRequestService {
       await this.assertCanRequest(accountId, sandbox, nowMs);
       return { sandbox, result: undefined };
     });
+    // The last Ride's Fare may only now be falling due, and has to be paid first.
+    await this.unpaidFares.bringUpToDate(accountId);
+    await this.payments.assertPaidUp(accountId);
     const quoted = await this.quote(input, names);
     return holdId === undefined ? this.payments.hold(accountId, quoted) : this.payments.confirm(accountId, holdId, quoted);
   }

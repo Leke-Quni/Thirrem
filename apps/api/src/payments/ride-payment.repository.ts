@@ -13,7 +13,9 @@ export type RidePaymentStatus =
   | 'releasing'
   | 'released'
   /** The Fare is due but its hold can no longer be charged. */
-  | 'unpaid';
+  | 'unpaid'
+  /** An unpaid Fare being paid again, whose new hold waits for the Rider's bank to verify them. */
+  | 'retrying';
 
 /** What was asked for, and the quoted Fare for it. The points are kept by name only. */
 export interface QuotedRide {
@@ -35,12 +37,14 @@ export interface RidePayment extends Omit<QuotedRide, 'amountCents'> {
   chargeCents: number | null;
   requestedAtMs: number;
   settledAtMs: number | null;
+  /** When the hold of a Fare being paid again was placed. */
+  retriedAtMs: number | null;
 }
 
-export type RidePaymentChanges = Partial<Pick<RidePayment, 'rideRequestId' | 'holdRef' | 'status' | 'trip' | 'chargeCents' | 'settledAtMs'>>;
+export type RidePaymentChanges = Partial<Pick<RidePayment, 'rideRequestId' | 'holdRef' | 'status' | 'trip' | 'chargeCents' | 'settledAtMs' | 'retriedAtMs'>>;
 
 /** Those still with money held, or about to have. */
-export const OPEN_STATUSES: readonly RidePaymentStatus[] = ['pending', 'held', 'charging', 'releasing'];
+export const OPEN_STATUSES: readonly RidePaymentStatus[] = ['pending', 'held', 'charging', 'releasing', 'retrying'];
 
 export abstract class RidePaymentRepository {
   abstract add(payment: RidePayment): Promise<void>;
@@ -50,5 +54,7 @@ export abstract class RidePaymentRepository {
   /** The newest of those given to a Ride Request. */
   abstract findLatest(accountId: string, rideRequestId: string): Promise<RidePayment | null>;
   abstract findOpen(accountId: string): Promise<RidePayment[]>;
+  /** Those whose Fare is still due, oldest first. */
+  abstract findUnpaid(accountId: string): Promise<RidePayment[]>;
   abstract findAccountsWithOpen(): Promise<string[]>;
 }

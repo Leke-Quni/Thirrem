@@ -129,6 +129,11 @@ export class StripePaymentService extends PaymentService {
         const { status } = await this.stripe.paymentIntents.retrieve(ref);
         if (status === 'succeeded') return;
         if (status === 'canceled') throw new HoldLostError('The hold was released before it could be charged');
+        if (error instanceof Stripe.errors.StripeCardError) {
+          // The card would refuse it again, so nothing is left held.
+          await this.stripe.paymentIntents.cancel(ref);
+          throw new HoldLostError(error.message);
+        }
         throw error;
       }
     });

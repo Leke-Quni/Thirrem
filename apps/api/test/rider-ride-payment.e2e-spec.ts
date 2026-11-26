@@ -146,6 +146,7 @@ describe('Paying for a Ride', () => {
           charge_cents: null,
           requested_at: new Date('2026-01-01T00:00:00Z'),
           settled_at: null,
+          retried_at: null,
         },
       ]);
     });

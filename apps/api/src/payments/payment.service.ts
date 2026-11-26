@@ -15,7 +15,7 @@ export class PaymentServiceError extends Error {}
 
 export class PaymentsNotSetUpError extends PaymentServiceError {}
 
-/** A hold that can no longer be charged, as it was released or expired. */
+/** A hold that can no longer be charged, as it was released or expired, or its card refused the charge. */
 export class HoldLostError extends PaymentServiceError {}
 
 export interface HoldRequest {

@@ -1,24 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { HttpException, HttpStatus, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import type { PaymentRefusedResponse } from '@thirrem/types';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { Trip } from '../fares/fare-calculator.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { PaymentMethodRepository } from './payment-method.repository.js';
+import { isPaymentId, refused } from './payment-refusal.js';
 import { HoldLostError, PaymentService, PaymentServiceError, type PlacedHold } from './payment.service.js';
 import { type QuotedRide, type RidePayment, RidePaymentRepository } from './ride-payment.repository.js';
+
+/** How long a Rider has to pass their bank's check before the hold waiting on it is released. */
+export const VERIFY_WITHIN_MS = 10 * 60_000;
 
 /** How long a charge or release that failed waits before it is tried again. */
 const RETRY_AFTER_MS = 30_000;
 
-const refused = (body: PaymentRefusedResponse) => new HttpException(body, HttpStatus.PAYMENT_REQUIRED);
+const fareUnpaid = () => refused({ code: 'FARE_UNPAID', message: 'Pay your unpaid Fare before requesting another Ride.' });
 
 const noMethod = () => refused({ code: 'PAYMENT_METHOD_REQUIRED', message: 'Add a payment method before requesting a Ride.' });
 
 const declined = (reason: string) => refused({ code: 'PAYMENT_DECLINED', message: `${reason} Change your payment method, then try again.` });
 
 const unverified = () => refused({ code: 'PAYMENT_DECLINED', message: 'Your bank did not verify the payment, so nothing was held. Try again, or change your payment method.' });
-
-const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 const unavailable = (error: unknown): never => {
   if (error instanceof PaymentServiceError) throw new ServiceUnavailableException('Cards are unavailable right now, so no Fare could be held. Try again in a moment.');
@@ -52,7 +53,7 @@ export class RidePaymentService {
     if (!method || !customerRef) throw noMethod();
     const id = randomUUID();
     const { amountCents, ...asked } = ride;
-    await this.ridePayments.add({ ...asked, id, accountId, rideRequestId: null, holdRef: null, status: 'pending', heldCents: amountCents, chargeCents: null, requestedAtMs: this.clock.now().getTime(), settledAtMs: null });
+    await this.ridePayments.add({ ...asked, id, accountId, rideRequestId: null, holdRef: null, status: 'pending', heldCents: amountCents, chargeCents: null, requestedAtMs: this.clock.now().getTime(), settledAtMs: null, retriedAtMs: null });
     let placed: PlacedHold;
     try {
       placed = await this.payments.placeHold({ customerRef, methodRef: method.ref, amountCents, reference: id });
@@ -74,7 +75,7 @@ export class RidePaymentService {
 
   /** Gives the id of a hold the Rider has been to their bank about, if it passed and is for this Fare. Otherwise it counts as failed. */
   async confirm(accountId: string, holdId: unknown, { vehicleType, amountCents }: QuotedRide): Promise<string> {
-    const payment = typeof holdId === 'string' && UUID.test(holdId) ? await this.ridePayments.find(accountId, holdId) : null;
+    const payment = isPaymentId(holdId) ? await this.ridePayments.find(accountId, holdId) : null;
     if (payment?.status !== 'pending' || !payment.holdRef) throw unverified();
     // The payment service being away says nothing about the check, so the hold is left to be asked about again.
     const status = await this.payments.findHold(payment.holdRef).catch(unavailable);
@@ -113,6 +114,15 @@ export class RidePaymentService {
     return this.ridePayments.findOpen(accountId);
   }
 
+  findUnpaid(accountId: string): Promise<RidePayment[]> {
+    return this.ridePayments.findUnpaid(accountId);
+  }
+
+  /** Refuses an account with a Fare still due. */
+  async assertPaidUp(accountId: string): Promise<void> {
+    if ((await this.findUnpaid(accountId)).length) throw fareUnpaid();
+  }
+
   findAccountsWithOpen(): Promise<string[]> {
     return this.ridePayments.findAccountsWithOpen();
   }
@@ -137,8 +147,8 @@ export class RidePaymentService {
   }
 
   private settleOnce(payment: RidePayment): Promise<void> {
-    const { id, status } = payment;
-    if (status !== 'charging' && status !== 'releasing') return Promise.resolve();
+    const { id } = payment;
+    if (!this.isDue(payment)) return Promise.resolve();
     const already = this.settling.get(id);
     if (already) return already;
     const failedAtMs = this.failedAtMs.get(id);
@@ -156,12 +166,23 @@ export class RidePaymentService {
     return done;
   }
 
+  private isDue({ status, retriedAtMs }: RidePayment): boolean {
+    if (status === 'retrying') return this.clock.now().getTime() - retriedAtMs! >= VERIFY_WITHIN_MS;
+    return status === 'charging' || status === 'releasing';
+  }
+
   private async carryOut({ id, status, holdRef, chargeCents }: RidePayment): Promise<void> {
     const settledAtMs = () => this.clock.now().getTime();
     if (status === 'releasing') {
       // One that never got as far as a hold has nothing to release.
       if (holdRef) await this.payments.releaseHold(holdRef);
       await this.ridePayments.update(id, { status: 'released', settledAtMs: settledAtMs() }, status);
+      return;
+    }
+    if (status === 'retrying') {
+      // The Rider never came back from their bank. The Fare is still due.
+      await this.payments.releaseHold(holdRef!);
+      await this.ridePayments.update(id, { status: 'unpaid' }, status);
       return;
     }
     try {
