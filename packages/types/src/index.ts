@@ -51,6 +51,15 @@ export interface FareQuote extends Fare {
   vehicleType: VehicleType;
 }
 
+/** What a Fare is made of, in euro cents. */
+export interface FareBreakdown {
+  baseCents: number;
+  distanceCents: number;
+  timeCents: number;
+  /** What the kilometres past the long-distance threshold add. */
+  longDistanceCents: number;
+}
+
 export interface FareResponse {
   distanceM: number;
   durationS: number;
@@ -209,6 +218,34 @@ export interface UnpaidFare extends Fare {
 
 export interface UnpaidFaresResponse {
   fares: UnpaidFare[];
+}
+
+/** What a Rider paid for a Ride. `amountCents` is the total charged. */
+export interface Receipt extends Fare {
+  id: string;
+  /** That of the Ride it is for. */
+  rideId: string;
+  /** When the Ride was requested. */
+  requestedAt: string;
+  vehicleType: VehicleType;
+  pickupName: string;
+  dropoffName: string;
+  /** How far the Ride went, and how long it took. */
+  distanceM: number;
+  durationS: number;
+  breakdown: FareBreakdown;
+  /** What was taken off `breakdown` so as not to charge more than the quoted Fare: 0 or less. With it, the breakdown adds up to `amountCents`. */
+  adjustmentCents: number;
+  paymentMethod: Pick<PaymentMethod, 'brand' | 'last4' | 'wallet'>;
+}
+
+/** A page of receipts, newest Ride first. */
+export interface ReceiptsResponse {
+  receipts: Receipt[];
+  /** How many there are in all. */
+  total: number;
+  /** Sent as `?after=` for the next page, or null on the last one. */
+  next: string | null;
 }
 
 export interface CardSetupResponse {

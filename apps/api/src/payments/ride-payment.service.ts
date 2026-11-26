@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import type { Trip } from '../fares/fare-calculator.js';
+import type { FareBreakdown } from '@thirrem/types';
+import { breakdownTotal, type Trip } from '../fares/fare-calculator.js';
 import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { PaymentMethodRepository } from './payment-method.repository.js';
 import { isPaymentId, refused } from './payment-refusal.js';
 import { HoldLostError, PaymentService, PaymentServiceError, type PlacedHold } from './payment.service.js';
-import { type QuotedRide, type RidePayment, RidePaymentRepository } from './ride-payment.repository.js';
+import { cardOf, type QuotedRide, type RidePayment, RidePaymentRepository } from './ride-payment.repository.js';
 
 /** How long a Rider has to pass their bank's check before the hold waiting on it is released. */
 export const VERIFY_WITHIN_MS = 10 * 60_000;
@@ -53,7 +54,7 @@ export class RidePaymentService {
     if (!method || !customerRef) throw noMethod();
     const id = randomUUID();
     const { amountCents, ...asked } = ride;
-    await this.ridePayments.add({ ...asked, id, accountId, rideRequestId: null, holdRef: null, status: 'pending', heldCents: amountCents, chargeCents: null, requestedAtMs: this.clock.now().getTime(), settledAtMs: null, retriedAtMs: null });
+    await this.ridePayments.add({ ...asked, id, accountId, rideRequestId: null, holdRef: null, status: 'pending', heldCents: amountCents, chargeCents: null, requestedAtMs: this.clock.now().getTime(), settledAtMs: null, retriedAtMs: null, card: cardOf(method), breakdown: null });
     let placed: PlacedHold;
     try {
       placed = await this.payments.placeHold({ customerRef, methodRef: method.ref, amountCents, reference: id });
@@ -128,8 +129,8 @@ export class RidePaymentService {
   }
 
   /** Makes the Fare of the Ride travelled due, never above the Fare that was quoted and held. */
-  async charge({ id, status, heldCents }: RidePayment, { distanceM, durationS }: Trip, fareCents: number): Promise<void> {
-    await this.ridePayments.update(id, { status: 'charging', trip: { distanceM, durationS }, chargeCents: Math.min(fareCents, heldCents) }, status);
+  async charge({ id, status, heldCents }: RidePayment, { distanceM, durationS }: Trip, breakdown: FareBreakdown): Promise<void> {
+    await this.ridePayments.update(id, { status: 'charging', trip: { distanceM, durationS }, breakdown, chargeCents: Math.min(breakdownTotal(breakdown), heldCents) }, status);
   }
 
   /** Makes the whole hold due to be released. */

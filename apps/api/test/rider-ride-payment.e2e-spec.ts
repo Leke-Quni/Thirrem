@@ -147,6 +147,13 @@ describe('Paying for a Ride', () => {
           requested_at: new Date('2026-01-01T00:00:00Z'),
           settled_at: null,
           retried_at: null,
+          card_brand: 'visa',
+          card_last4: '4242',
+          card_wallet: null,
+          base_cents: null,
+          distance_cents: null,
+          time_cents: null,
+          long_distance_cents: null,
         },
       ]);
     });

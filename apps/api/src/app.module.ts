@@ -13,6 +13,8 @@ import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
 import { CancelHistoryRepository } from './dispatch/cancel-history.repository.js';
 import { InMemoryCancelHistoryRepository } from './dispatch/in-memory-cancel-history.repository.js';
 import { RidePaymentLedger } from './dispatch/ride-payment-ledger.js';
+import { ReceiptService } from './dispatch/receipt.service.js';
+import { RiderReceiptController } from './dispatch/rider-receipt.controller.js';
 import { RideRequestService } from './dispatch/ride-request.service.js';
 import { RideSettlementTimer } from './dispatch/ride-settlement-timer.js';
 import { RiderRideRequestController } from './dispatch/rider-ride-request.controller.js';
@@ -59,7 +61,7 @@ import { SimulationClock, SystemClock } from './simulation-clock/simulation-cloc
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController, RiderPaymentMethodController, RiderUnpaidFareController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController, RiderPaymentMethodController, RiderUnpaidFareController, RiderReceiptController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -81,6 +83,7 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     { provide: JourneyLedger, useClass: RidePaymentLedger },
     RideSettlementTimer,
     UnpaidFareService,
+    ReceiptService,
     { provide: RidePaymentRepository, useClass: PgRidePaymentRepository },
     { provide: PaymentMethodRepository, useClass: PgPaymentMethodRepository },
     {

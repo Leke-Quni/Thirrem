@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { VehicleType } from '@thirrem/types';
+import type { VehicleType, Wallet } from '@thirrem/types';
 import { DatabaseService } from '../database/database.service.js';
 import { OPEN_STATUSES, type RidePayment, type RidePaymentChanges, RidePaymentRepository, type RidePaymentStatus } from './ride-payment.repository.js';
 
@@ -19,7 +19,20 @@ interface RidePaymentRow {
   requested_at: Date;
   settled_at: Date | null;
   retried_at: Date | null;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_wallet: Wallet | null;
+  base_cents: number | null;
+  distance_cents: number | null;
+  time_cents: number | null;
+  long_distance_cents: number | null;
 }
+
+// The columns of each are written together, so one of them says whether all are there.
+const toCard = ({ card_brand: brand, card_last4: last4, card_wallet: wallet }: RidePaymentRow) => (brand === null ? null : { brand, last4: last4!, wallet });
+
+const toBreakdown = ({ base_cents: baseCents, distance_cents, time_cents, long_distance_cents }: RidePaymentRow) =>
+  baseCents === null ? null : { baseCents, distanceCents: distance_cents!, timeCents: time_cents!, longDistanceCents: long_distance_cents! };
 
 const toPayment = (row: RidePaymentRow): RidePayment => ({
   id: row.id,
@@ -36,12 +49,17 @@ const toPayment = (row: RidePaymentRow): RidePayment => ({
   requestedAtMs: row.requested_at.getTime(),
   settledAtMs: row.settled_at?.getTime() ?? null,
   retriedAtMs: row.retried_at?.getTime() ?? null,
+  card: toCard(row),
+  breakdown: toBreakdown(row),
 });
+
+/** Paid, with what a receipt shows. Payments charged before that was kept have none. */
+const RECEIPTED = `status = 'charged' AND base_cents IS NOT NULL AND card_brand IS NOT NULL`;
 
 const toDate = (ms: number | null) => (ms === null ? null : new Date(ms));
 
 /** The columns a change sets. */
-function columns({ rideRequestId, holdRef, status, trip, chargeCents, settledAtMs, retriedAtMs }: RidePaymentChanges): Array<[string, unknown]> {
+function columns({ rideRequestId, holdRef, status, trip, chargeCents, settledAtMs, retriedAtMs, card, breakdown }: RidePaymentChanges): Array<[string, unknown]> {
   const all: Array<[string, unknown]> = [
     ['ride_request_id', rideRequestId],
     ['stripe_intent_ref', holdRef],
@@ -51,6 +69,13 @@ function columns({ rideRequestId, holdRef, status, trip, chargeCents, settledAtM
     ['charge_cents', chargeCents],
     ['settled_at', settledAtMs === undefined ? undefined : toDate(settledAtMs)],
     ['retried_at', retriedAtMs === undefined ? undefined : toDate(retriedAtMs)],
+    ['card_brand', card?.brand],
+    ['card_last4', card?.last4],
+    ['card_wallet', card?.wallet],
+    ['base_cents', breakdown?.baseCents],
+    ['distance_cents', breakdown?.distanceCents],
+    ['time_cents', breakdown?.timeCents],
+    ['long_distance_cents', breakdown?.longDistanceCents],
   ];
   return all.filter(([, value]) => value !== undefined);
 }
@@ -63,9 +88,9 @@ export class PgRidePaymentRepository extends RidePaymentRepository {
 
   async add(payment: RidePayment): Promise<void> {
     await this.database.query(
-      `INSERT INTO ride_payments (id, account_id, ride_request_id, stripe_intent_ref, status, vehicle_type, pickup_name, dropoff_name, distance_m, duration_s, held_cents, charge_cents, requested_at, settled_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [payment.id, payment.accountId, payment.rideRequestId, payment.holdRef, payment.status, payment.vehicleType, payment.pickupName, payment.dropoffName, payment.trip.distanceM, payment.trip.durationS, payment.heldCents, payment.chargeCents, toDate(payment.requestedAtMs), toDate(payment.settledAtMs)],
+      `INSERT INTO ride_payments (id, account_id, ride_request_id, stripe_intent_ref, status, vehicle_type, pickup_name, dropoff_name, distance_m, duration_s, held_cents, charge_cents, requested_at, settled_at, card_brand, card_last4, card_wallet)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+      [payment.id, payment.accountId, payment.rideRequestId, payment.holdRef, payment.status, payment.vehicleType, payment.pickupName, payment.dropoffName, payment.trip.distanceM, payment.trip.durationS, payment.heldCents, payment.chargeCents, toDate(payment.requestedAtMs), toDate(payment.settledAtMs), payment.card?.brand, payment.card?.last4, payment.card?.wallet],
     );
   }
 
@@ -92,6 +117,22 @@ export class PgRidePaymentRepository extends RidePaymentRepository {
 
   findUnpaid(accountId: string): Promise<RidePayment[]> {
     return this.findByStatus(accountId, ['unpaid', 'retrying']);
+  }
+
+  async findReceipted(accountId: string, limit: number, after: string | null): Promise<RidePayment[]> {
+    // Rides requested at once are told apart by id, so that none is lost between two lots.
+    const { rows } = await this.database.query<RidePaymentRow>(
+      `SELECT * FROM ride_payments WHERE account_id = $1 AND ${RECEIPTED}
+         AND ($3::uuid IS NULL OR (requested_at, id) < (SELECT requested_at, id FROM ride_payments WHERE account_id = $1 AND id = $3))
+       ORDER BY requested_at DESC, id DESC LIMIT $2`,
+      [accountId, limit, after],
+    );
+    return rows.map(toPayment);
+  }
+
+  async countReceipted(accountId: string): Promise<number> {
+    const { rows } = await this.database.query<{ count: number }>(`SELECT count(*)::int AS count FROM ride_payments WHERE account_id = $1 AND ${RECEIPTED}`, [accountId]);
+    return rows[0]!.count;
   }
 
   async findAccountsWithOpen(): Promise<string[]> {

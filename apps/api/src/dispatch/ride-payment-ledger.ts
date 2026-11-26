@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
-import { calculateFare } from '../fares/fare-calculator.js';
+import { calculateFareBreakdown } from '../fares/fare-calculator.js';
 import type { RidePayment } from '../payments/ride-payment.repository.js';
 import { RidePaymentService, VERIFY_WITHIN_MS } from '../payments/ride-payment.service.js';
 import { JourneyLedger } from '../sandbox/journey-ledger.js';
@@ -38,7 +38,7 @@ export class RidePaymentLedger extends JourneyLedger {
       if (payment.status !== 'held') continue;
       const end = endOf(payment, sandbox, nowMs, dropping);
       if (end === 'release') await this.payments.release(payment);
-      else if (end) await this.payments.charge(payment, end.charge, calculateFare(this.config.fareRates, payment.vehicleType, end.charge).amountCents);
+      else if (end) await this.payments.charge(payment, end.charge, calculateFareBreakdown(this.config.fareRates, payment.vehicleType, end.charge));
     }
   }
 

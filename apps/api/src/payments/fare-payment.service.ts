@@ -4,7 +4,7 @@ import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { PaymentMethodRepository } from './payment-method.repository.js';
 import { isPaymentId, refused } from './payment-refusal.js';
 import { PaymentService, PaymentServiceError } from './payment.service.js';
-import { type RidePayment, RidePaymentRepository } from './ride-payment.repository.js';
+import { cardOf, type HeldCard, type RidePayment, RidePaymentRepository } from './ride-payment.repository.js';
 import { RidePaymentService } from './ride-payment.service.js';
 
 const noMethod = () => refused({ code: 'PAYMENT_METHOD_REQUIRED', message: 'Add a payment method to pay your Fare.' });
@@ -65,8 +65,8 @@ export class FarePaymentService {
     // A new reference each time, as asking again with an old one would give back the old hold.
     const placed = await this.payments.placeHold({ customerRef, methodRef: method.ref, amountCents: fare.chargeCents!, reference: randomUUID() }).catch(unavailable);
     if (placed.status === 'declined') throw declined(placed.message);
-    if (placed.status === 'held') return this.charge(fare, placed.ref);
-    await this.ridePayments.update(fare.id, { holdRef: placed.ref, status: 'retrying', retriedAtMs: this.clock.now().getTime() }, fare.status);
+    if (placed.status === 'held') return this.charge(fare, placed.ref, cardOf(method));
+    await this.ridePayments.update(fare.id, { holdRef: placed.ref, card: cardOf(method), status: 'retrying', retriedAtMs: this.clock.now().getTime() }, fare.status);
     throw refused({ code: 'PAYMENT_VERIFICATION', message: 'Your bank needs to verify this payment.', holdId: fare.id, clientSecret: placed.clientSecret, publishableKey: this.payments.publishableKey! });
   }
 
@@ -74,7 +74,7 @@ export class FarePaymentService {
   private async confirm(fare: RidePayment, holdId: unknown): Promise<void> {
     if (fare.status !== 'retrying' || holdId !== fare.id) throw unverified();
     // The payment service being away says nothing about the check, so the hold is left to be asked about again.
-    if ((await this.payments.findHold(fare.holdRef!).catch(unavailable)) === 'held') return this.charge(fare, fare.holdRef!);
+    if ((await this.payments.findHold(fare.holdRef!).catch(unavailable)) === 'held') return this.charge(fare, fare.holdRef!, fare.card);
     await this.drop(fare);
     throw unverified();
   }
@@ -86,8 +86,8 @@ export class FarePaymentService {
     return { ...fare, status: 'unpaid' };
   }
 
-  private async charge({ id, accountId, status }: RidePayment, holdRef: string): Promise<void> {
-    await this.ridePayments.update(id, { holdRef, status: 'charging', settledAtMs: null }, status);
+  private async charge({ id, accountId, status }: RidePayment, holdRef: string, card: HeldCard | null): Promise<void> {
+    await this.ridePayments.update(id, { holdRef, card: card ?? undefined, status: 'charging', settledAtMs: null }, status);
     await this.ridePaymentService.settle(accountId);
     // A charge the payment service did not answer is tried again until it does, as the money is held.
     if ((await this.ridePayments.find(accountId, id))?.status === 'unpaid') throw declined('Your card was declined.');
