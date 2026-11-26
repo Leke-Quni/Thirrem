@@ -1827,6 +1827,40 @@ test.describe('Rider Ride Request', () => {
     await expect(panel.getByRole('button', { name: 'Start a new Sandbox' })).toHaveCount(0);
   });
 
+  const unpaid = { id: 'fare-1', amountCents: 199, currency: 'EUR', vehicleType: 'economy', pickupName: 'School Road', dropoffName: 'School Road', requestedAt: '2026-01-01T12:00:00.000Z' };
+  const OWED = 'Your €1.99 Fare could not be charged. Pay it before requesting another Ride.';
+
+  test('says when the Fare of a completed Ride could not be charged, there and in the planner', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    await page.route('**/rider/unpaid-fares', (r) => r.fulfill({ json: { fares: [unpaid] } }));
+
+    complete();
+
+    await expect(panel.getByRole('alert')).toContainText(OWED);
+    await expect(panel.getByRole('link', { name: 'Pay your Fare' })).toHaveAttribute('href', '/payment');
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+
+    await expect(page.getByRole('alert').filter({ hasText: OWED })).toBeVisible();
+  });
+
+  test('shows what stops a Ride Request that is refused for an unpaid Fare', async ({ page }) => {
+    await openPlanner(page);
+    let fares: object[] = [];
+    await page.route('**/rider/unpaid-fares', (r) => r.fulfill({ json: { fares } }));
+    await page.route('**/rider/ride-requests', (r) => {
+      fares = [unpaid];
+      return r.fulfill({ status: 402, json: { code: 'FARE_UNPAID', message: 'Pay your unpaid Fare before requesting another Ride.' } });
+    });
+    await placeBothPins(page);
+
+    await ask(page).click();
+
+    await expect(page.getByRole('alert')).toHaveText(new RegExp(OWED.replace('.', '\\.')));
+    await page.getByRole('link', { name: 'Pay your Fare' }).click();
+    await expect(page).toHaveURL(/\/payment$/);
+  });
+
   test('keeps focus in the panel when completing takes away the focused button', async ({ page }) => {
     const { complete } = await onRide(page);
     await page.getByRole('button', { name: 'Start a new Sandbox' }).focus();

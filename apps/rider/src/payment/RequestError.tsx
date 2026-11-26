@@ -6,6 +6,18 @@ import type { RequestFailure } from './payment-refusal';
 /** Why a request failed. Where the payment method is the reason, it offers the ways to put that right. */
 export function RequestError({ failure }: { failure: RequestFailure | null }) {
   if (!failure) return null;
+  if (failure.payment === 'FARE_UNPAID') {
+    return (
+      <div className="payment-problem">
+        <div className="form-error" role="alert">
+          <span>{failure.message}</span>
+        </div>
+        <Link className="btn ghost" to="/payment">
+          Pay your Fare
+        </Link>
+      </div>
+    );
+  }
   if (failure.payment) return <PaymentProblem key={failure.message} failure={failure} />;
   return (
     <div className="form-error" role="alert">

@@ -10,7 +10,9 @@ import { paymentApi } from '../payment/payment-api';
 import { cardEnding } from '../payment/payment-text';
 import { SavedMethods } from '../payment/SavedMethods';
 import { TestCards } from '../payment/TestCards';
+import { UnpaidFares } from '../payment/UnpaidFares';
 import { usePaymentMethods } from '../payment/usePaymentMethods';
+import { useUnpaidFares } from '../payment/useUnpaidFares';
 import { MethodsSkeleton, PaymentSkeleton } from './PaymentSkeleton';
 import { SessionUnavailable } from './SessionUnavailable';
 
@@ -19,6 +21,7 @@ export function Payment() {
   const navigate = useNavigate();
   const loggingOut = useRef(false);
   const { state, pending, error, run, change, retry } = usePaymentMethods(Boolean(email));
+  const unpaid = useUnpaidFares(Boolean(email));
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const savedHeading = useRef<HTMLHeadingElement>(null);
@@ -108,56 +111,59 @@ export function Payment() {
           <h1>Payment</h1>
           <p className="payment-lead">Test mode. No real money is taken.</p>
         </header>
-        <section className="payment-panel" aria-labelledby="saved-methods">
-          <h2 id="saved-methods" ref={savedHeading} tabIndex={-1}>
-            Saved methods
-          </h2>
-          {state.status === 'loading' && <MethodsSkeleton />}
-          {state.status === 'failed' && (
-            <>
-              <p className="form-error" role="alert">
-                <Icon name="alert" />
-                <span>{state.message}</span>
-              </p>
-              <div className="payment-buttons">
-                <button type="button" className="btn primary" onClick={retry}>
-                  Try again
-                </button>
-              </div>
-            </>
-          )}
-          {state.status === 'ready' && (
-            <>
-              <SavedMethods methods={state.methods} pending={pending} onMakeDefault={makeDefault} onRemove={remove} />
-              {error && (
+        <div className="payment-main">
+          <UnpaidFares unpaid={unpaid} methods={state.status === 'ready' ? state.methods : null} />
+          <section className="payment-panel" aria-labelledby="saved-methods">
+            <h2 id="saved-methods" ref={savedHeading} tabIndex={-1}>
+              Saved methods
+            </h2>
+            {state.status === 'loading' && <MethodsSkeleton />}
+            {state.status === 'failed' && (
+              <>
                 <p className="form-error" role="alert">
                   <Icon name="alert" />
-                  <span>{error}</span>
+                  <span>{state.message}</span>
                 </p>
-              )}
-              {!state.publishableKey ? (
-                <p className="payment-note">Card payments are not set up on this server.</p>
-              ) : clientSecret ? (
-                <AddCard publishableKey={state.publishableKey} clientSecret={clientSecret} onAccepted={save} onCancel={() => setClientSecret(null)} />
-              ) : (
-                <div className="payment-add">
-                  <div className="payment-buttons">
-                    <button type="button" className="btn primary" aria-disabled={pending !== null} onClick={openCardForm}>
-                      {pending === 'setup' ? 'Opening…' : 'Add a card'}
-                    </button>
-                    <button type="button" className="btn ghost" aria-disabled={pending !== null} onClick={addTestCard}>
-                      {pending === 'test' ? 'Adding…' : 'Use a test card'}
-                    </button>
-                  </div>
-                  <p className="payment-note">The test card is Stripe’s Visa ending 4242, for test mode only.</p>
+                <div className="payment-buttons">
+                  <button type="button" className="btn primary" onClick={retry}>
+                    Try again
+                  </button>
                 </div>
-              )}
-            </>
-          )}
-          <p className="sr-only" role="status">
-            {announcement}
-          </p>
-        </section>
+              </>
+            )}
+            {state.status === 'ready' && (
+              <>
+                <SavedMethods methods={state.methods} pending={pending} onMakeDefault={makeDefault} onRemove={remove} />
+                {error && (
+                  <p className="form-error" role="alert">
+                    <Icon name="alert" />
+                    <span>{error}</span>
+                  </p>
+                )}
+                {!state.publishableKey ? (
+                  <p className="payment-note">Card payments are not set up on this server.</p>
+                ) : clientSecret ? (
+                  <AddCard publishableKey={state.publishableKey} clientSecret={clientSecret} onAccepted={save} onCancel={() => setClientSecret(null)} />
+                ) : (
+                  <div className="payment-add">
+                    <div className="payment-buttons">
+                      <button type="button" className="btn primary" aria-disabled={pending !== null} onClick={openCardForm}>
+                        {pending === 'setup' ? 'Opening…' : 'Add a card'}
+                      </button>
+                      <button type="button" className="btn ghost" aria-disabled={pending !== null} onClick={addTestCard}>
+                        {pending === 'test' ? 'Adding…' : 'Use a test card'}
+                      </button>
+                    </div>
+                    <p className="payment-note">The test card is Stripe’s Visa ending 4242, for test mode only.</p>
+                  </div>
+                )}
+              </>
+            )}
+            <p className="sr-only" role="status">
+              {announcement}
+            </p>
+          </section>
+        </div>
         {/* The numbers are no use where cards cannot be added. */}
         {(state.status !== 'ready' || state.publishableKey) && <TestCards />}
       </main>

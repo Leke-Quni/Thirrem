@@ -6,6 +6,7 @@ import { RiderBar } from '../components/RiderBar';
 import { RouteLoader } from '../components/RouteLoader';
 import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
+import { useUnpaidFares } from '../payment/useUnpaidFares';
 import { drivingRoute } from '../map/approach-route';
 import { carMarks } from '../map/car-marks';
 import { locate } from '../map/locate';
@@ -54,6 +55,9 @@ export function Home() {
     askedHere.current = true;
     requested(made);
   });
+  // A Fare falls due as a Ride completes, and a refused Ride Request says there is one.
+  const completedRide = sandbox.status === 'ready' && sandbox.ride?.finalFare ? sandbox.ride.id : '';
+  const { fares: unpaidFares } = useUnpaidFares(Boolean(email), `${completedRide} ${requestError?.payment ?? ''}`);
   const marks = useMemo(() => carMarks(rideRequest, ride), [rideRequest, ride]);
   const driving = useMemo(() => drivingRoute(rideRequest, ride), [rideRequest, ride]);
   const droppedRequest = useRef(false);
@@ -137,7 +141,7 @@ export function Home() {
       />
       <main className="ride-layout">
         {ride ? (
-          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} />
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} unpaidFares={unpaidFares} />
         ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}
@@ -175,6 +179,7 @@ export function Home() {
               retryFare();
             }}
             focusTitle={droppedRequest.current}
+            unpaidFares={unpaidFares}
             request={{ ready: sandboxLive, pending, verifying, error: requestError, pausedForS, onRequest: request }}
           />
         )}

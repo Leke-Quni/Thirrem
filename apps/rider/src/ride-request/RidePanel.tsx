@@ -1,8 +1,9 @@
-import type { Ride } from '@thirrem/types';
+import type { Ride, UnpaidFare } from '@thirrem/types';
 import { useEffect, useRef, useState } from 'react';
 import { formatFare } from '../map/format';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
+import { UnpaidFareNotice } from '../payment/UnpaidFareNotice';
 import { ArrivalStatus } from './ArrivalStatus';
 import { EndRide } from './EndRide';
 import { NewSandbox } from './NewSandbox';
@@ -20,9 +21,10 @@ interface RidePanelProps {
   onRouting(): void;
   /** Set when the Rider asked for this Ride here, so focus may be moved to it from a button that has gone. */
   focusTitle: boolean;
+  unpaidFares: UnpaidFare[];
 }
 
-export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onRouting, focusTitle }: RidePanelProps) {
+export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onRouting, focusTitle, unpaidFares }: RidePanelProps) {
   const { finalFare, endRequested, progress } = ride;
   // Known here as soon as the API takes the request, ahead of the live feed saying so.
   const [asked, setAsked] = useState(false);
@@ -70,6 +72,7 @@ export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onR
           </>
         )}
       </div>
+      {finalFare && <UnpaidFareNotice fares={unpaidFares} />}
       <DriverCard driver={ride.driver} />
       <p className="request-note">
         {finalFare

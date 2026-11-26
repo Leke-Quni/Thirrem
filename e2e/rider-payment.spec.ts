@@ -323,3 +323,123 @@ test.describe('Rider account menu', () => {
     expect(box.x + box.width).toBeLessThanOrEqual(320);
   });
 });
+
+const unpaidFare = { id: 'fare-1', amountCents: 199, currency: 'EUR', vehicleType: 'economy', pickupName: 'School Road', dropoffName: 'Mother Teresa Street', requestedAt: '2026-01-01T12:00:00.000Z' };
+
+interface PayAnswer {
+  status: number;
+  json: object;
+}
+
+/** Answers for the API's unpaid Fares. Each payment is answered in turn, and what was sent with it is recorded. */
+async function unpaidFares(page: Page, answers: PayAnswer[] = []) {
+  const paid: unknown[] = [];
+  let fares = [unpaidFare];
+  await page.route('**/rider/unpaid-fares', (r) => r.fulfill({ json: { fares } }));
+  await page.route('**/rider/unpaid-fares/fare-1/payment', (r) => {
+    paid.push(r.request().postDataJSON());
+    const answer = answers.shift() ?? { status: 200, json: { fares: [] } };
+    if (answer.status === 200) fares = [];
+    return r.fulfill(answer);
+  });
+  return paid;
+}
+
+test.describe('An unpaid Fare on the Payment page', () => {
+  const panel = (page: Page) => page.getByRole('region', { name: 'Unpaid Fare' });
+  const pay = (page: Page) => panel(page).getByRole('button', { name: 'Pay €1.99' });
+
+  test('says what could not be charged, with the default method chosen to pay it', async ({ page }) => {
+    await signedIn(page);
+    await paymentMethods(page, [visa, mastercard]);
+    await unpaidFares(page);
+
+    await page.goto('/payment');
+
+    for (const text of ['€1.99', 'could not be charged', 'School Road', 'Mother Teresa Street', 'Economy']) await expect(panel(page)).toContainText(text);
+    await expect(panel(page).getByRole('radio', { name: /Visa ending 4242/ })).toBeChecked();
+    await expect(panel(page).getByRole('radio', { name: /Mastercard ending 4444/ })).not.toBeChecked();
+  });
+
+  test('pays it on the method chosen, and says so', async ({ page }) => {
+    await signedIn(page);
+    await paymentMethods(page, [visa, mastercard]);
+    const paid = await unpaidFares(page);
+    await page.goto('/payment');
+    await panel(page).getByRole('radio', { name: /Mastercard/ }).check();
+
+    await pay(page).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Fare of €1.99 paid. You can request Rides again.' })).toBeFocused();
+    await expect(pay(page)).toHaveCount(0);
+    expect(paid).toEqual([{ methodId: 'm-mastercard' }]);
+  });
+
+  test('says why the payment failed, and lets the Rider try again', async ({ page }) => {
+    await signedIn(page);
+    await paymentMethods(page, [visa]);
+    const message = 'Your card was declined. Your Fare is still unpaid. Try again, or choose another method.';
+    await unpaidFares(page, [{ status: 402, json: { code: 'PAYMENT_DECLINED', message } }]);
+    await page.goto('/payment');
+
+    await pay(page).click();
+
+    await expect(panel(page).getByRole('alert')).toHaveText(message);
+    await pay(page).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Fare of €1.99 paid.' })).toBeVisible();
+  });
+
+  test('takes the Rider through their bank’s check, then pays on the same hold', async ({ page }) => {
+    await page.route('https://js.stripe.com/**', (r) =>
+      r.fulfill({
+        contentType: 'text/javascript',
+        body: `window.Stripe = () => ({ _registerWrapper() {}, registerAppInfo() {}, handleNextAction() { return Promise.resolve({}); } });`,
+      }),
+    );
+    await signedIn(page);
+    await paymentMethods(page, [visa]);
+    const paid = await unpaidFares(page, [{ status: 402, json: { code: 'PAYMENT_VERIFICATION', message: 'Your bank needs to verify this payment.', holdId: 'fare-1', clientSecret: 'pi_1_secret_a', publishableKey: 'pk_test_browser' } }]);
+    await page.goto('/payment');
+
+    await pay(page).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Fare of €1.99 paid.' })).toBeVisible();
+    expect(paid).toEqual([{ methodId: 'm-visa' }, { methodId: 'm-visa', holdId: 'fare-1' }]);
+  });
+
+  test('asks a Rider with no saved method to add one', async ({ page }) => {
+    await signedIn(page);
+    await paymentMethods(page, []);
+    await unpaidFares(page);
+
+    await page.goto('/payment');
+
+    await expect(panel(page)).toContainText('Add a payment method below to pay it.');
+    await expect(pay(page)).toHaveCount(0);
+  });
+
+  test('says when unpaid Fares cannot be loaded, and lets the Rider try again', async ({ page }) => {
+    await signedIn(page);
+    await paymentMethods(page, [visa]);
+    await unpaidFares(page);
+    let down = true;
+    await page.route('**/rider/unpaid-fares', (r) => (down ? r.fulfill({ status: 500, json: {} }) : r.fallback()));
+    await page.goto('/payment');
+    await expect(panel(page).getByRole('alert')).toContainText('could not be checked');
+    down = false;
+
+    await panel(page).getByRole('button', { name: 'Try again' }).click();
+
+    await expect(pay(page)).toBeVisible();
+  });
+
+  test('is not shown to a Rider who owes nothing', async ({ page }) => {
+    await signedIn(page);
+    await paymentMethods(page, [visa]);
+    const answered = page.waitForResponse('**/rider/unpaid-fares');
+    await page.goto('/payment');
+    await answered;
+
+    await expect(page.getByRole('region', { name: /unpaid fare/i })).toHaveCount(0);
+  });
+});
