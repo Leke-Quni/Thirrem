@@ -42,10 +42,13 @@ export interface StreetResponse {
 
 export type VehicleType = 'economy' | 'comfort' | 'xl' | 'electric';
 
-export interface FareQuote {
-  vehicleType: VehicleType;
+export interface Fare {
   amountCents: number;
   currency: 'EUR';
+}
+
+export interface FareQuote extends Fare {
+  vehicleType: VehicleType;
 }
 
 export interface FareResponse {
@@ -67,6 +70,8 @@ export interface SandboxResponse {
   drivers: SimulatedDriver[];
   /** The open Ride Request, if the Rider has one. */
   rideRequest: RideRequest | null;
+  /** The Rider's Ride, from pickup on. The Ride Request it came from is then no longer sent. */
+  ride: Ride | null;
   /** The seconds until the Rider can request a Ride again after cancelling too often, or null if they can now. */
   requestsPausedForS: number | null;
   /** When a cancel last left the Rider one more of its kind from a pause, for the app to warn them as it changes. Null if none has. */
@@ -93,7 +98,7 @@ export interface RideRequest {
   /** The matched Driver, or null if none is. */
   driver: MatchedDriver | null;
   /** The matched Driver's drive to the Pickup Point, or null while searching. */
-  approach: Approach | null;
+  approach: DriveProgress | null;
   /** What cancelling it now would mean, or null once it has failed. `DELETE /rider/ride-requests` cancels it, with `?pause=accepted` if the Rider has agreed to be paused. */
   cancellation: Cancellation | null;
 }
@@ -119,14 +124,31 @@ export interface RideRequestsPausedResponse {
   message: string;
 }
 
-export type Approach =
+/** The journey from pickup to drop-off. */
+export interface Ride {
+  /** That of the Ride Request it came from. */
+  id: string;
+  vehicleType: VehicleType;
+  pickup: Coordinate;
+  dropoff: Coordinate;
+  driver: MatchedDriver;
+  /** The drive to the Drop-off Point. */
+  progress: DriveProgress;
+  /** Whether the Rider has asked the Driver to end the Ride early. */
+  endRequested: boolean;
+  /** What the Rider pays, set once the Ride has completed. */
+  finalFare: Fare | null;
+}
+
+/** How far the Driver is with a drive: the one to the Pickup Point, or the Ride's to the Drop-off Point. */
+export type DriveProgress =
   /** The road route is still being looked for, and the Driver waits where it was matched. */
   | { status: 'routing' }
-  /** No route could be had. `POST /rider/ride-requests/approach` looks for one again. */
+  /** No route could be had. `POST /rider/ride-requests/approach` or `POST /rider/rides/route` looks for one again. */
   | { status: 'unavailable' }
-  /** `geometry` is the road still ahead, starting where the Driver is. `etaS` is the seconds until it reaches the Pickup Point. */
+  /** `geometry` is the road still ahead, starting where the Driver is. `etaS` is the seconds until it reaches the end of it. */
   | { status: 'driving'; geometry: Array<[number, number]>; etaS: number }
-  /** The Driver is waiting at the Pickup Point. */
+  /** The Driver is at the end of the route. */
   | { status: 'arrived' };
 
 export interface MatchedDriver {

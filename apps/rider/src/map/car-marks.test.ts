@@ -1,4 +1,4 @@
-import type { RideRequest, RideRequestOffer } from '@thirrem/types';
+import type { Ride, RideRequest, RideRequestOffer } from '@thirrem/types';
 import { describe, expect, it } from 'vitest';
 import { carMarks } from './car-marks';
 
@@ -16,24 +16,35 @@ const rideRequest = (offers: RideRequestOffer[]): RideRequest => ({
 
 describe('carMarks', () => {
   it('marks nothing without a Ride Request', () => {
-    expect(carMarks(null).size).toBe(0);
+    expect(carMarks(null, null).size).toBe(0);
   });
 
   it('marks every Driver the Ride Request is offered to', () => {
-    const marks = carMarks(rideRequest([{ driverId: 'a', status: 'offered' }, { driverId: 'b', status: 'offered' }]));
+    const marks = carMarks(rideRequest([{ driverId: 'a', status: 'offered' }, { driverId: 'b', status: 'offered' }]), null);
 
     expect([...marks]).toEqual([['a', 'offered'], ['b', 'offered']]);
   });
 
   it('marks only the matched Driver once the others have had it withdrawn', () => {
-    const marks = carMarks(rideRequest([{ driverId: 'a', status: 'withdrawn' }, { driverId: 'b', status: 'accepted' }]));
+    const marks = carMarks(rideRequest([{ driverId: 'a', status: 'withdrawn' }, { driverId: 'b', status: 'accepted' }]), null);
 
     expect([...marks]).toEqual([['b', 'matched']]);
   });
 
   it('marks the matched Driver as arrived once waiting at the Pickup Point', () => {
-    const marks = carMarks({ ...rideRequest([{ driverId: 'a', status: 'withdrawn' }, { driverId: 'b', status: 'accepted' }]), approach: { status: 'arrived' } });
+    const marks = carMarks({ ...rideRequest([{ driverId: 'a', status: 'withdrawn' }, { driverId: 'b', status: 'accepted' }]), approach: { status: 'arrived' } }, null);
 
     expect([...marks]).toEqual([['b', 'arrived']]);
+  });
+
+  it.each([
+    ['riding', { status: 'driving', geometry: [], etaS: 60 }],
+    ['riding', { status: 'routing' }],
+    ['riding', { status: 'unavailable' }],
+    ['arrived', { status: 'arrived' }],
+  ] as const)("marks the Ride's Driver as %s", (mark, progress) => {
+    const marks = carMarks(null, { driver: { id: 'b' }, progress } as unknown as Ride);
+
+    expect([...marks]).toEqual([['b', mark]]);
   });
 });

@@ -17,7 +17,7 @@ class FakeSocket {
     this.closed = true;
   }
   drivers(list: SimulatedDriver[]) {
-    this.onmessage?.({ data: JSON.stringify({ event: 'drivers', data: { drivers: list, rideRequest: null } }) });
+    this.onmessage?.({ data: JSON.stringify({ event: 'drivers', data: { drivers: list, rideRequest: null, ride: null } }) });
   }
 }
 
@@ -59,7 +59,7 @@ describe('watchDrivers', () => {
     sockets[0]!.drivers([driver]);
 
     expect(sockets[0]!.sent).toEqual([{ event: 'watch', data: { token: 'secret' } }]);
-    expect(handlers.onSandbox).toHaveBeenCalledWith({ drivers: [driver], rideRequest: null });
+    expect(handlers.onSandbox).toHaveBeenCalledWith({ drivers: [driver], rideRequest: null, ride: null });
   });
 
   it('reconnects after a dropped connection, waiting longer each time', () => {
@@ -152,7 +152,7 @@ describe('watchDrivers', () => {
       sockets[1]!.drivers([driver]);
       sockets[1]!.onclose?.({ code: 1006 });
 
-      expect(handlers.onSandbox).toHaveBeenCalledWith({ drivers: [driver], rideRequest: null });
+      expect(handlers.onSandbox).toHaveBeenCalledWith({ drivers: [driver], rideRequest: null, ride: null });
       expect(handlers.onLost).toHaveBeenCalledOnce();
     });
   });

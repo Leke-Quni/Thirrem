@@ -1,4 +1,4 @@
-import type { FareQuote } from '@thirrem/types';
+import type { Fare, FareQuote, VehicleType } from '@thirrem/types';
 import { VEHICLE_TYPES } from '../vehicle-types.js';
 import type { FareRates, VehicleRate } from './fare-rates.js';
 
@@ -14,10 +14,10 @@ function amountCents(rate: VehicleRate, thresholdM: number, { distanceM, duratio
   return Math.round(total / 3000);
 }
 
+export function calculateFare(rates: FareRates, vehicleType: VehicleType, trip: Trip): Fare {
+  return { amountCents: amountCents(rates.vehicleTypes[vehicleType], rates.longDistanceThresholdM, trip), currency: 'EUR' };
+}
+
 export function calculateFares(rates: FareRates, trip: Trip): FareQuote[] {
-  return VEHICLE_TYPES.map((vehicleType) => ({
-    vehicleType,
-    amountCents: amountCents(rates.vehicleTypes[vehicleType], rates.longDistanceThresholdM, trip),
-    currency: 'EUR',
-  }));
+  return VEHICLE_TYPES.map((vehicleType) => ({ vehicleType, ...calculateFare(rates, vehicleType, trip) }));
 }

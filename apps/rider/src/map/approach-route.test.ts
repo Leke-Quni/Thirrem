@@ -1,22 +1,28 @@
-import type { Approach, RideRequest } from '@thirrem/types';
+import type { DriveProgress, Ride, RideRequest } from '@thirrem/types';
 import { describe, expect, it } from 'vitest';
-import { approachRoute, lineFromCar } from './approach-route';
+import { drivingRoute, lineFromCar } from './approach-route';
 
 const geometry: Array<[number, number]> = [[20.43, 42.39], [20.43, 42.38]];
-const rideRequest = (approach: Approach | null) => ({ approach, driver: { id: 'matched' } }) as RideRequest;
+const rideRequest = (approach: DriveProgress | null) => ({ approach, driver: { id: 'matched' } }) as RideRequest;
+const ride = (progress: DriveProgress) => ({ progress, driver: { id: 'matched' } }) as Ride;
 
-describe('approachRoute', () => {
+describe('drivingRoute', () => {
   it('is the road still ahead of the matched Driver on the way to the Pickup Point', () => {
-    expect(approachRoute(rideRequest({ status: 'driving', geometry, etaS: 90 }))).toEqual({ driverId: 'matched', ahead: geometry });
+    expect(drivingRoute(rideRequest({ status: 'driving', geometry, etaS: 90 }), null)).toEqual({ driverId: 'matched', ahead: geometry });
   });
 
-  it.each<Approach>([{ status: 'routing' }, { status: 'unavailable' }, { status: 'arrived' }])('is none while the approach is $status', (approach) => {
-    expect(approachRoute(rideRequest(approach))).toBeNull();
+  it('is the road still ahead to the Drop-off Point during a Ride', () => {
+    expect(drivingRoute(null, ride({ status: 'driving', geometry, etaS: 90 }))).toEqual({ driverId: 'matched', ahead: geometry });
+  });
+
+  it.each<DriveProgress>([{ status: 'routing' }, { status: 'unavailable' }, { status: 'arrived' }])('is none while the drive is $status', (progress) => {
+    expect(drivingRoute(rideRequest(progress), null)).toBeNull();
+    expect(drivingRoute(null, ride(progress))).toBeNull();
   });
 
   it('is none while searching, or without a Ride Request', () => {
-    expect(approachRoute(rideRequest(null))).toBeNull();
-    expect(approachRoute(null)).toBeNull();
+    expect(drivingRoute(rideRequest(null), null)).toBeNull();
+    expect(drivingRoute(null, null)).toBeNull();
   });
 });
 

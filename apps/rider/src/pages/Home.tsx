@@ -7,13 +7,14 @@ import { RouteLoader } from '../components/RouteLoader';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
-import { approachRoute } from '../map/approach-route';
+import { drivingRoute } from '../map/approach-route';
 import { carMarks } from '../map/car-marks';
 import { locate } from '../map/locate';
 import { initialPlan, planReducer } from '../map/planner';
 import { useFareQuote } from '../map/useFareQuote';
 import { useRoute } from '../map/useRoute';
 import { CancelWarningToast } from '../ride-request/CancelWarningToast';
+import { RidePanel } from '../ride-request/RidePanel';
 import { RideRequestPanel } from '../ride-request/RideRequestPanel';
 import { useCancelWarning } from '../ride-request/useCancelWarning';
 import { useRequestRide } from '../ride-request/useRequestRide';
@@ -40,9 +41,12 @@ export function Home() {
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
   const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, cancelled, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
-  // A failed Ride Request the Rider has moved on from is not shown again.
+  // A failed Ride Request or a completed Ride that the Rider has moved on from is not shown again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
+  const ride = sandbox.status === 'ready' && sandbox.ride?.id !== dismissed ? sandbox.ride : null;
+  /** The Ride or Ride Request on screen, if any. */
+  const journey = ride ?? rideRequest;
   const pausedForS = sandbox.status === 'ready' ? sandbox.requestsPausedForS : null;
   const warning = useCancelWarning(sandbox.status === 'ready' ? sandbox.cancelWarningAtMs : undefined, Boolean(pausedForS));
   const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
@@ -51,16 +55,16 @@ export function Home() {
     askedHere.current = true;
     requested(made);
   });
-  const marks = useMemo(() => carMarks(rideRequest), [rideRequest]);
-  const approach = useMemo(() => approachRoute(rideRequest), [rideRequest]);
+  const marks = useMemo(() => carMarks(rideRequest, ride), [rideRequest, ride]);
+  const driving = useMemo(() => drivingRoute(rideRequest, ride), [rideRequest, ride]);
   const droppedRequest = useRef(false);
 
-  // After a reload the pins and Vehicle Type are put back as the shown Ride Request has them, whatever else moved them.
+  // After a reload the pins and Vehicle Type are put back as the shown Ride Request or Ride has them, whatever else moved them.
   useEffect(() => {
-    if (!rideRequest) return;
-    dispatch({ type: 'restore', pickup: rideRequest.pickup, dropoff: rideRequest.dropoff });
-    setVehicleType(rideRequest.vehicleType);
-  }, [rideRequest, plan.pickup, plan.dropoff]);
+    if (!journey) return;
+    dispatch({ type: 'restore', pickup: journey.pickup, dropoff: journey.dropoff });
+    setVehicleType(journey.vehicleType);
+  }, [journey, plan.pickup, plan.dropoff]);
 
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -95,6 +99,30 @@ export function Home() {
     void findMe(true);
   }, [mapState]);
 
+  /** Goes back to the planner, which takes focus from the button that was pressed. */
+  const leaveJourney = () => {
+    askedHere.current = false;
+    droppedRequest.current = true;
+  };
+
+  const startNewRide = () => {
+    leaveJourney();
+    startNewSandbox();
+  };
+
+  const backToPlanner = (id: string) => {
+    leaveJourney();
+    setDismissed(id);
+  };
+
+  /** The next journey starts from where the Rider really is, with nothing left of the last one. */
+  const requestAnotherRide = (id: string) => {
+    backToPlanner(id);
+    dispatch({ type: 'remove', slot: 'dropoff' });
+    dispatch({ type: 'remove', slot: 'pickup' });
+    void findMe(true);
+  };
+
   if (loading) return <HomeSkeleton />;
   if (unreachable) return <SessionUnavailable onRetry={retrySession} />;
   if (!email) return loggingOut.current ? null : <Navigate to={expired ? '/login' : '/'} replace />;
@@ -120,7 +148,9 @@ export function Home() {
         </div>
       </header>
       <main className="ride-layout">
-        {rideRequest ? (
+        {ride ? (
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} />
+        ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}
             rideRequest={rideRequest}
@@ -130,21 +160,12 @@ export function Home() {
             focusTitle={askedHere.current}
             onRouting={routing}
             onCancelled={(paused) => {
-              askedHere.current = false;
-              droppedRequest.current = true;
+              leaveJourney();
               cancelled(paused);
             }}
-            onStartNew={() => {
-              askedHere.current = false;
-              droppedRequest.current = true;
-              startNewSandbox();
-            }}
+            onStartNew={startNewRide}
             retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
-            onChange={() => {
-              askedHere.current = false;
-              droppedRequest.current = true;
-              setDismissed(rideRequest.id);
-            }}
+            onChange={() => backToPlanner(rideRequest.id)}
           />
         ) : (
           <PlannerPanel
@@ -174,16 +195,16 @@ export function Home() {
             pickup={plan.pickup}
             dropoff={plan.dropoff}
             geometry={route.status === 'ready' ? route.route.geometry : null}
-            approach={approach}
+            driving={driving}
             focus={focus}
             drivers={'drivers' in sandbox ? sandbox.drivers : NO_DRIVERS}
             marks={marks}
-            locked={rideRequest !== null}
+            locked={journey !== null}
             onPlace={(point) => {
-              if (!rideRequest) dispatch({ type: 'place', point });
+              if (!journey) dispatch({ type: 'place', point });
             }}
             onMove={(slot, point) => {
-              if (!rideRequest) dispatch({ type: 'move', slot, point });
+              if (!journey) dispatch({ type: 'move', slot, point });
             }}
             onReady={() => setMapState('ready')}
             onFailure={() => setMapState('failed')}

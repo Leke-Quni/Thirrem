@@ -12,16 +12,38 @@ export function driverElement(): HTMLDivElement {
   return el;
 }
 
+/** Says which car the Rider is in. It has a marker of its own, so that it stays level as the car turns. */
+function riderTag(map: maplibregl.Map, at: maplibregl.LngLat): maplibregl.Marker {
+  const el = document.createElement('div');
+  el.className = 'rider-tag';
+  el.textContent = 'You';
+  el.setAttribute('aria-hidden', 'true');
+  // Raised clear of the ring around the car.
+  return new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, -26], subpixelPositioning: true }).setLngLat(at).addTo(map);
+}
+
 export function driverCar(map: maplibregl.Map, { lat, lon, heading }: Pose): Car {
   // Without subpixel positioning a slow car steps from pixel to pixel instead of gliding.
   const marker = new maplibregl.Marker({ element: driverElement(), rotation: heading, rotationAlignment: 'map', subpixelPositioning: true }).setLngLat([lon, lat]).addTo(map);
+  let tag: maplibregl.Marker | null = null;
   return {
-    moveTo: (pose) => marker.setLngLat([pose.lon, pose.lat]).setRotation(pose.heading),
+    moveTo: (pose) => {
+      marker.setLngLat([pose.lon, pose.lat]).setRotation(pose.heading);
+      tag?.setLngLat([pose.lon, pose.lat]);
+    },
     mark: (mark) => {
       const { dataset } = marker.getElement();
       if (mark) dataset.mark = mark;
       else delete dataset.mark;
+      if (mark === 'riding') tag ??= riderTag(map, marker.getLngLat());
+      else {
+        tag?.remove();
+        tag = null;
+      }
     },
-    remove: () => marker.remove(),
+    remove: () => {
+      tag?.remove();
+      marker.remove();
+    },
   };
 }

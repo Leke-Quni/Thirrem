@@ -9,10 +9,11 @@ import { Pacer } from '../sandbox/pacer.js';
 import { releasedDriver } from '../sandbox/sandbox-driver.js';
 import type { Sandbox } from '../sandbox/sandbox.repository.js';
 import { SandboxService } from '../sandbox/sandbox.service.js';
-import { approachPosition, approachRouted } from './approach.js';
 import { CancelHistoryRepository, recordCancel } from './cancel-history.repository.js';
 import { cancellation, pausedForS } from './cancel-limit.js';
-import { broadcast, cancelling, firstToAccept, isOpen, matchedDriverId, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
+import { routed } from './drive.js';
+import { endRequestedRide, isCompleted, isPickedUp, matchedDriverPosition, rideProgress } from './ride.js';
+import { broadcast, cancelling, firstToAccept, isOpen, isUnderWay, matchedDriverId, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
 
 /** How long to wait before each further try, when the routing server cannot be had. */
 const ROUTE_RETRY_AFTER_MS = [2_000, 5_000];
@@ -28,8 +29,14 @@ function requestsPaused(forS: number): HttpException {
   return new HttpException(body, HttpStatus.TOO_MANY_REQUESTS);
 }
 
-function openRideRequest({ rideRequest }: Sandbox, nowMs: number): StoredRideRequest {
-  if (!rideRequest || !isOpen(rideRequest, nowMs)) throw new ConflictException('You have no open Ride Request.');
+/** The Ride Request that has become a Ride still going at `nowMs`. */
+function currentRide({ rideRequest, resumedAtMs }: Sandbox, nowMs: number): StoredRideRequest {
+  if (!rideRequest || !isPickedUp(rideRequest, resumedAtMs, nowMs) || isCompleted(rideRequest, resumedAtMs, nowMs)) throw new ConflictException('You are not on a Ride.');
+  return rideRequest;
+}
+
+function openRideRequest({ rideRequest, resumedAtMs }: Sandbox, nowMs: number): StoredRideRequest {
+  if (!rideRequest || !isOpen(rideRequest, resumedAtMs, nowMs)) throw new ConflictException('You have no open Ride Request.');
   return rideRequest;
 }
 
@@ -46,7 +53,10 @@ export class RideRequestService {
 
   async request(accountId: string, input: RideRequestInput): Promise<RideRequest> {
     const { made, view } = await this.sandboxes.change(accountId, async (sandbox, drivers, nowMs, positionAt) => {
-      if (sandbox.rideRequest && isOpen(sandbox.rideRequest, nowMs)) throw new ConflictException('You already have an open Ride Request.');
+      const current = sandbox.rideRequest;
+      if (current && isUnderWay(current, sandbox.resumedAtMs, nowMs)) {
+        throw new ConflictException(isPickedUp(current, sandbox.resumedAtMs, nowMs) ? 'You are already on a Ride.' : 'You already have an open Ride Request.');
+      }
       const history = await this.cancels.findByAccount(accountId);
       const paused = pausedForS(history, nowMs);
       if (paused) throw requestsPaused(paused);
@@ -57,7 +67,7 @@ export class RideRequestService {
       return { sandbox: { ...sandbox, rideRequest: made }, result: { made, view: rideRequestView(made, null, history, sandbox.resumedAtMs, nowMs) } };
     });
     // The route is looked for while Drivers decide, and the Rider is not kept waiting for it.
-    void this.findRoute(accountId, made);
+    void this.findRoutes(accountId, made);
     return view;
   }
 
@@ -70,7 +80,7 @@ export class RideRequestService {
       await recordCancel(this.cancels, accountId, asked, nowMs);
       const matchedId = matchedDriverId(open, nowMs);
       const drivers = sandbox.drivers.map((driver) =>
-        driver.id === matchedId && open.approach ? releasedDriver(driver, sandbox.area, approachPosition(open.approach, sandbox.resumedAtMs, nowMs)) : driver,
+        driver.id === matchedId && open.approach ? releasedDriver(driver, sandbox.area, matchedDriverPosition(open, sandbox.resumedAtMs, nowMs)!) : driver,
       );
       const released = drivers.find((driver) => driver.id === matchedId);
       return { sandbox: { ...sandbox, drivers, rideRequest: undefined }, result: released?.own };
@@ -86,17 +96,52 @@ export class RideRequestService {
       const rideRequest: StoredRideRequest = { ...open, approach: { ...open.approach, route: null } };
       return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };
     });
-    if (again) void this.findRoute(accountId, again);
+    if (again) void this.findRoutes(accountId, again);
   }
 
-  private async findRoute(accountId: string, { id, pickup, approach }: StoredRideRequest): Promise<void> {
+  /** Looks for the Ride's route to the Drop-off Point again, if the last search found none. */
+  async retryRideRoute(accountId: string): Promise<void> {
+    const again = await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
+      const current = currentRide(sandbox, nowMs);
+      if (current.rideRoute !== 'unavailable') return { sandbox, result: null };
+      const rideRequest: StoredRideRequest = { ...current, rideRoute: null };
+      return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };
+    });
+    if (again) void this.findRideRoute(accountId, again);
+  }
+
+  /** Asks the Driver to end the Ride early. The simulated Driver drives on for a short while, then stops. Asking again changes nothing. */
+  async endRide(accountId: string): Promise<void> {
+    await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
+      const current = currentRide(sandbox, nowMs);
+      if (current.endRequested) return { sandbox, result: undefined };
+      if (rideProgress(current, sandbox.resumedAtMs, nowMs).status !== 'driving') throw new ConflictException('Your Driver has no route to drive yet.');
+      const rideRequest = endRequestedRide(current, sandbox.resumedAtMs, nowMs, this.config.dispatch.stopMs / 1_000);
+      return { sandbox: { ...sandbox, rideRequest }, result: undefined };
+    });
+  }
+
+  /** The route to the Pickup Point, and once there is one, the Ride's route, which nothing needs sooner. */
+  private async findRoutes(accountId: string, rideRequest: StoredRideRequest): Promise<void> {
+    const { pickup, approach } = rideRequest;
     if (!approach) return;
     const { lat, lon } = approach.from;
     const route = await this.routeWithRetries({ lat, lon }, pickup);
-    await this.sandboxes.amend(accountId, (sandbox, nowMs) => {
+    await this.amendRideRequest(accountId, rideRequest.id, (current, nowMs) => current.approach && { ...current, approach: { ...current.approach, route: routed(route, nowMs) } });
+    if (route) await this.findRideRoute(accountId, rideRequest);
+  }
+
+  private async findRideRoute(accountId: string, { id, pickup, dropoff }: StoredRideRequest): Promise<void> {
+    const route = await this.routeWithRetries(pickup, dropoff);
+    await this.amendRideRequest(accountId, id, (current, nowMs) => ({ ...current, rideRoute: routed(route, nowMs) }));
+  }
+
+  /** Changes the Ride Request with what was found for it, unless the Sandbox has moved on to another. */
+  private amendRideRequest(accountId: string, id: string, amend: (rideRequest: StoredRideRequest, nowMs: number) => StoredRideRequest | undefined): Promise<void> {
+    return this.sandboxes.amend(accountId, (sandbox, nowMs) => {
       const { rideRequest } = sandbox;
-      if (rideRequest?.id !== id || !rideRequest.approach) return sandbox;
-      return { ...sandbox, rideRequest: { ...rideRequest, approach: approachRouted(rideRequest.approach, route, nowMs) } };
+      if (rideRequest?.id !== id) return sandbox;
+      return { ...sandbox, rideRequest: amend(rideRequest, nowMs) ?? rideRequest };
     });
   }
 

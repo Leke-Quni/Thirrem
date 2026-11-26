@@ -25,7 +25,9 @@ describe("A Rider's Ride Request", () => {
 
   const start = async (options: Parameters<typeof createTestApp>[0] = {}) => {
     const clock = new ManualClock(new Date('2026-01-01T00:00:00Z'));
-    const app = await createTestApp({ clock, ...options, config: { live: { intervalMs: 20, helloTimeoutMs: 200 }, ...options.config } });
+    // These tests are about the Ride Request, so its Driver never gets as far as picking the Rider up.
+    const dispatch = { ...(options.config?.dispatch ?? loadConfig().dispatch), boardingMs: 24 * HOUR };
+    const app = await createTestApp({ clock, ...options, config: { live: { intervalMs: 20, helloTimeoutMs: 200 }, ...options.config, dispatch } });
     apps.push(app);
     await app.listen(0, '127.0.0.1');
     const server = app.getHttpServer();

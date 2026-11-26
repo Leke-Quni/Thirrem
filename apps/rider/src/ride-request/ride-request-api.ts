@@ -14,9 +14,13 @@ export async function requestRide(pickup: Coordinate, dropoff: Coordinate, vehic
   return body as RideRequest;
 }
 
-/** Looks for the matched Driver's route again, after none could be found. */
-export async function findRouteAgain(): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/rider/ride-requests/approach`, {
+export type DriveTo = 'pickup' | 'dropoff';
+
+const ROUTE_PATHS: Record<DriveTo, string> = { pickup: '/rider/ride-requests/approach', dropoff: '/rider/rides/route' };
+
+/** Looks for the route to the Pickup Point or the Drop-off Point again, after none could be found. */
+export async function findRouteAgain(to: DriveTo): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${ROUTE_PATHS[to]}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
   });
@@ -37,4 +41,15 @@ export async function cancelRideRequest(pauseAccepted: boolean): Promise<void> {
   const body = await response.json().catch(() => ({}));
   const Failure = body.code === 'CANCEL_WOULD_PAUSE' ? CancelWouldPauseError : ApiError;
   throw new Failure(body.message ?? 'Your Ride Request could not be cancelled. Please try again.', response.status);
+}
+
+/** Asks the Driver to stop and end the Ride early. */
+export async function endRide(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/rider/rides/end`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+  });
+  if (response.ok) return;
+  const body = await response.json().catch(() => ({}));
+  throw new ApiError(body.message ?? 'Your Driver could not be asked to stop. Please try again.', response.status);
 }

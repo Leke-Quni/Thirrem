@@ -1476,10 +1476,16 @@ test.describe('Rider Ride Request', () => {
   const defaultEnds = { pickup: { lat: 42.3803, lon: 20.4308 }, dropoff: { lat: 42.3712, lon: 20.4219 } };
 
   /** The planner of a signed in Rider whose Sandbox, routes, Fares and live feed the test answers for. */
-  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null, cancellation = undefined as typeof free | undefined, pausedForS = null as number | null, warningAtMs = null as number | null } = {}) {
-    await page.addInitScript(() => {
-      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
-    });
+  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null, cancellation = undefined as typeof free | undefined, pausedForS = null as number | null, warningAtMs = null as number | null, location = null as typeof gjakova | null } = {}) {
+    await page.addInitScript((at) => {
+      navigator.geolocation.getCurrentPosition = (ok, fail) => {
+        // As a browser does, it answers later and not at once.
+        setTimeout(() => {
+          if (at) ok({ coords: { latitude: at.lat, longitude: at.lon, accuracy: 10 } } as GeolocationPosition);
+          else fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+        });
+      };
+    }, location);
     const sandbox = {
       asked: [] as Array<{ vehicleType: string; pickup: object; dropoff: object }>,
       fresh: 0,
@@ -1620,6 +1626,286 @@ test.describe('Rider Ride Request', () => {
 
     await expect(page.getByRole('alert')).toContainText(/too many ride requests/i);
     await expect(again).toBeEnabled();
+  });
+
+  const rideOf = (progress: object, finalFare: object | null = null) => ({ id: 'request-1', vehicleType: 'economy', ...defaultEnds, driver, progress, endRequested: false, finalFare });
+
+  test('follows the Ride from pickup to the Drop-off Point', async ({ page }) => {
+    const { connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+    const ride = (progress: object) => connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: rideOf(progress) } }));
+
+    ride(driving(180));
+
+    const panel = page.getByRole('region', { name: 'On your Ride' });
+    await expect(page.locator('.arrival')).toHaveText(/Drop-off in\s*3 min/);
+    for (const text of ['Arta K.', 'TH-412-KD', '€2.02']) await expect(panel).toContainText(text);
+    await expect(marked(page, 'riding')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /pickup point pin/i })).toHaveAccessibleName(/stays put/);
+
+    ride({ status: 'arrived' });
+
+    await expect(page.locator('.arrival')).toHaveText('You have arrived at your Drop-off Point.');
+    await expect(marked(page, 'arrived')).toHaveCount(1);
+  });
+
+  test("tags the Rider's own car from pickup until the Drop-off Point, and fades the Pickup Point left behind", async ({ page }) => {
+    const { connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+    const tag = page.locator('.ride-map .rider-tag');
+    const car = marked(page, 'riding');
+    const pickupPin = page.getByRole('button', { name: /pickup point pin/i });
+    const report = (progress: object, drivers = cars) =>
+      connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers, rideRequest: null, ride: rideOf(progress) } }));
+    // On its way to the Pickup Point, the car does not have the Rider in it yet.
+    await expect(marked(page, 'matched')).toHaveCount(1);
+    await expect(tag).toHaveCount(0);
+
+    report(driving(180));
+
+    await expect(tag).toHaveText('You');
+    await expect(pickupPin).toHaveCSS('opacity', '0.45');
+    /** How far the tag's middle is from the car's, across and up. */
+    const offset = async () => {
+      const [label, drawn] = [(await tag.boundingBox())!, (await car.boundingBox())!];
+      return { across: Math.abs(label.x + label.width / 2 - (drawn.x + drawn.width / 2)), up: drawn.y + drawn.height / 2 - (label.y + label.height) };
+    };
+    // Polled, as the camera moves to the route between one measurement and the next.
+    await expect.poll(async () => (await offset()).across).toBeLessThan(2);
+    await expect.poll(async () => (await offset()).up).toBeGreaterThan(15);
+
+    let before = (await tag.boundingBox())!;
+    await expect.poll(async () => {
+      const [last, now] = [before, (await tag.boundingBox())!];
+      before = now;
+      return Math.hypot(now.x - last.x, now.y - last.y);
+    }, { intervals: [300] }).toBeLessThan(0.5);
+    report(driving(120), cars.map((each) => (each.id === driver.id ? { ...each, lat: each.lat - 0.001, heading: 200 } : each)));
+
+    await expect.poll(async () => (await tag.boundingBox())!.y - before.y).toBeGreaterThan(5);
+    await expect.poll(async () => (await offset()).across).toBeLessThan(2);
+    // It stays level however the car turns.
+    expect((await tag.boundingBox())!.height).toBeCloseTo(before.height, 0);
+
+    report({ status: 'arrived' });
+
+    await expect(tag).toHaveCount(0);
+    await expect(pickupPin).toHaveCSS('opacity', '1');
+  });
+
+  test('lets the Rider ask again when no route to the Drop-off Point can be found', async ({ page }) => {
+    await openPlanner(page);
+    let asked = 0;
+    await page.route('**/rider/rides/route', (r) => {
+      asked += 1;
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: null, ride: rideOf({ status: 'unavailable' }) } }));
+    await page.reload();
+    await expect(page.getByRole('status').filter({ hasText: 'no route to your Drop-off Point' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Find the route again' }).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your route…' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeFocused();
+    expect(asked).toBe(1);
+  });
+
+  /** A Rider on a Ride, which `complete` has the live feed report complete. */
+  async function onRide(page: Page, options: { location?: typeof gjakova } = {}) {
+    const planner = await openPlanner(page, { ...options, open: 'matched' });
+    await expect.poll(() => planner.connections.length).toBe(1);
+    const report = (progress: object, finalFare: object | null = null) =>
+      planner.connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: { ...rideOf(progress, finalFare), id: 'request' } } }));
+    report(driving(180));
+    await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeVisible();
+    const complete = () => report({ status: 'arrived' }, { amountCents: 199, currency: 'EUR' });
+    const panel = page.getByRole('region', { name: 'Ride complete' });
+    return { ...planner, complete, panel };
+  }
+
+  test('shows the final Fare once the Ride has completed', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    complete();
+
+    await expect(panel.getByRole('status').filter({ hasText: 'Final Fare' })).toHaveText(/Final Fare\s*€1\.99/);
+    // The Fare quoted beforehand is no longer shown beside it.
+    await expect(panel).not.toContainText('€2.02');
+    for (const text of ['You have arrived at your Drop-off Point.', 'Arta K.', 'TH-412-KD', 'No money was charged.']) await expect(panel).toContainText(text);
+    await expect(panel.getByRole('button', { name: 'Start a new Sandbox' })).toHaveCount(0);
+  });
+
+  test('keeps focus in the panel when completing takes away the focused button', async ({ page }) => {
+    const { complete } = await onRide(page);
+    await page.getByRole('button', { name: 'Start a new Sandbox' }).focus();
+
+    complete();
+
+    await expect(page.getByRole('heading', { name: 'Ride complete' })).toBeFocused();
+  });
+
+  const pin = (page: Page, name: 'Pickup' | 'Drop-off') => page.getByRole('button', { name: new RegExp(`${name} Point pin`) });
+
+  test('lets the Rider make another Ride Request after a completed Ride, from where they are', async ({ page }) => {
+    const { sandbox, panel, complete } = await onRide(page, { location: gjakova });
+    complete();
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+    // The API goes on sending the completed Ride until another Ride Request is made.
+    complete();
+
+    await expect(page.locator('.planner h1')).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Ride complete' })).toHaveCount(0);
+    await expect(marked(page, 'arrived')).toHaveCount(0);
+    // The last Ride's Drop-off Point and its route are gone, and the Pickup Point is where the Rider is.
+    await expect(page.getByRole('button', { name: /^Pickup Point/ }).first()).toContainText('Your location');
+    await expect(pin(page, 'Pickup')).toHaveAccessibleName(/Drag it/);
+    await expect(pin(page, 'Drop-off')).toHaveCount(0);
+    await expect(page.locator('.route-hint')).toBeVisible();
+    await expect(ask(page)).toBeDisabled();
+    expect(sandbox.fresh).toBe(0);
+
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
+    await ask(page).click();
+
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeVisible();
+    expect(sandbox.asked).toHaveLength(1);
+    expect(sandbox.asked[0]!.pickup).toEqual(gjakova);
+  });
+
+  test('clears both pins for another Ride Request while location is blocked, saying why', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    complete();
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+
+    await expect(pin(page, 'Pickup')).toHaveCount(0);
+    await expect(pin(page, 'Drop-off')).toHaveCount(0);
+    await expect(page.locator('.locate-note')).not.toContainText('It is not saved');
+  });
+
+  test('shows a completed Ride again after a reload', async ({ page }) => {
+    await openPlanner(page);
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: null, ride: rideOf({ status: 'arrived' }, { amountCents: 199, currency: 'EUR' }) } }));
+
+    await page.reload();
+
+    await expect(page.getByRole('region', { name: 'Ride complete' })).toContainText('€1.99');
+  });
+
+  for (const width of [320, 768]) {
+    test(`keeps the completed Ride inside the panel at ${width} px wide`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+
+      const { panel, complete } = await onRide(page);
+    complete();
+
+      await expect(panel).toContainText('€1.99');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      const outer = (await panel.boundingBox())!;
+      for (const part of [panel.locator('.final-fare strong'), panel.getByRole('button', { name: 'Request another Ride' })]) {
+        const box = (await part.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(outer.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(outer.x + outer.width);
+      }
+    });
+  }
+
+  /** A page on a Ride, with what the live feed then says of it left to the test. */
+  async function openRide(page: Page, ride: object = rideOf(driving(180))) {
+    const opened = await openPlanner(page);
+    const asked: string[] = [];
+    await page.route('**/rider/rides/end', (r) => {
+      asked.push(r.request().method());
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: null, ride } }));
+    await expect.poll(() => opened.connections.length).toBe(1);
+    await page.reload();
+    await expect(page.getByRole('region', { name: /Ride/ })).toBeVisible();
+    await expect.poll(() => opened.connections.length).toBe(2);
+    const send = (next: object) => opened.connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: next } }));
+    return { asked, send };
+  }
+  const endButton = (page: Page) => page.getByRole('button', { name: 'End Ride early' });
+  const waiting = (page: Page) => page.getByRole('status').filter({ hasText: 'Waiting for your Driver to stop…' });
+
+  test('asks the Driver to end the Ride early only once the Rider has confirmed', async ({ page }) => {
+    const { asked } = await openRide(page);
+
+    await endButton(page).click();
+
+    const confirm = page.getByRole('group', { name: /Ask your Driver to stop\?/ });
+    await expect(confirm).toContainText('You’ll pay for the distance travelled until you stop.');
+    await expect(confirm.getByRole('button', { name: 'Keep riding' })).toBeFocused();
+    expect(asked).toEqual([]);
+
+    await confirm.getByRole('button', { name: 'Ask to stop' }).click();
+
+    await expect(waiting(page)).toBeVisible();
+    await expect(endButton(page)).toHaveCount(0);
+    await expect(page.locator('.arrival')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeFocused();
+    expect(asked).toEqual(['POST']);
+  });
+
+  for (const [way, keep] of [
+    ['the button', (page: Page) => page.getByRole('button', { name: 'Keep riding' }).click()],
+    ['Escape', (page: Page) => page.keyboard.press('Escape')],
+  ] as const) {
+    test(`carries on with the Ride when the Rider keeps riding with ${way}`, async ({ page }) => {
+      const { asked } = await openRide(page);
+      await endButton(page).click();
+      await expect(page.getByRole('button', { name: 'Keep riding' })).toBeFocused();
+
+      await keep(page);
+
+      await expect(endButton(page)).toBeFocused();
+      expect(asked).toEqual([]);
+    });
+  }
+
+  test('says why the Driver could not be asked to stop, and lets the Rider try again', async ({ page }) => {
+    await openRide(page);
+    await page.route('**/rider/rides/end', (r) => r.fulfill({ status: 409, json: { message: 'You are not on a Ride.' } }));
+    await endButton(page).click();
+
+    await page.getByRole('button', { name: 'Ask to stop' }).click();
+
+    await expect(page.getByRole('alert')).toContainText('You are not on a Ride.');
+    await expect(page.getByRole('button', { name: 'Ask to stop' })).toBeEnabled();
+    await expect(waiting(page)).toHaveCount(0);
+  });
+
+  test('still says it is waiting for the Driver to stop after a reload', async ({ page }) => {
+    await openRide(page, { ...rideOf(driving(180)), endRequested: true });
+
+    await expect(waiting(page)).toBeVisible();
+    await expect(endButton(page)).toHaveCount(0);
+  });
+
+  test('offers no early end while there is no route being driven', async ({ page }) => {
+    await openRide(page, rideOf({ status: 'unavailable' }));
+
+    await expect(page.getByRole('button', { name: 'Start a new Sandbox' })).toBeVisible();
+    await expect(endButton(page)).toHaveCount(0);
+  });
+
+  test('shows the final Fare once the Driver has stopped, then starts over for another Ride Request', async ({ page }) => {
+    const { send } = await openRide(page, { ...rideOf(driving(180)), endRequested: true });
+
+    send({ ...rideOf({ status: 'arrived' }), endRequested: true, finalFare: { amountCents: 148, currency: 'EUR' } });
+
+    const panel = page.getByRole('region', { name: 'Ride complete' });
+    await expect(panel.getByRole('status').filter({ hasText: 'Final Fare' })).toContainText('€1.48');
+    await expect(panel).toContainText('Your Ride ended early, where your Driver stopped.');
+    await expect(panel).not.toContainText('You have arrived at your Drop-off Point.');
+    await expect(waiting(page)).toHaveCount(0);
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+
+    await expect(page.getByRole('button', { name: /^Request / })).toBeVisible();
   });
 
   test('keeps the pins where they are while the Ride Request is open', async ({ page }) => {

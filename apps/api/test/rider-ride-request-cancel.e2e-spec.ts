@@ -16,6 +16,8 @@ const dropoff = { lat: 42.39, lon: 20.45 };
 const north = (metres: number) => ({ ...pickup, lat: pickup.lat + metres / 111_195 });
 /** The only Driver is close enough to be asked at once, and accepts this long after. */
 const ACCEPT_MS = 2_000;
+/** So long that the Driver, once there, does not pick the Rider up partway through a test. */
+const BOARDING_MS = 60 * 60_000;
 
 describe('Cancelling a Ride Request', () => {
   const apps: INestApplication[] = [];
@@ -29,7 +31,7 @@ describe('Cancelling a Ride Request', () => {
   };
 
   /** A Rider with a running Sandbox whose only Driver is parked 100 m north of the Pickup Point. */
-  const rider = async (routing = new StraightRoutingService(), roads = new FakeRoadService()) => {
+  const rider = async (routing = new StraightRoutingService(), roads = new FakeRoadService(), boardingMs = BOARDING_MS) => {
     const clock = new ManualClock(new Date('2026-01-01T00:00:00Z'));
     const station = { vehicleType: 'economy' as const, heading: 90, ...north(100) };
     const app = await createTestApp({
@@ -38,7 +40,7 @@ describe('Cancelling a Ride Request', () => {
       roads,
       pacer: new InstantPacer(),
       areas: new FixedAreaRepository({ centre: pickup, stations: [station], paths: [] }),
-      config: { dispatch: { acceptWindowMs: 9_000, acceptAfterMs: { min: ACCEPT_MS, max: ACCEPT_MS } } },
+      config: { dispatch: { acceptWindowMs: 9_000, acceptAfterMs: { min: ACCEPT_MS, max: ACCEPT_MS }, boardingMs, stopMs: 5_000 } },
     });
     apps.push(app);
     const server = app.getHttpServer();
@@ -68,9 +70,9 @@ describe('Cancelling a Ride Request', () => {
   const MINUTE = 60_000;
   const GRACE_MS = 30_000;
   /** A Rider whose released Drivers stay parked close by, so every further Ride Request is matched at once. */
-  const frequentCanceller = async (routing?: StraightRoutingService) => {
+  const frequentCanceller = async (routing?: StraightRoutingService, boardingMs?: number) => {
     const roads = new FakeRoadService(new Error('No new paths'));
-    const made = await rider(routing, roads);
+    const made = await rider(routing, roads, boardingMs);
     /** Requests a Ride and cancels it `matchedForMs` after the match. */
     const cancelAfterMatch = async (matchedForMs: number) => {
       await made.requestRide();
@@ -357,6 +359,29 @@ describe('Cancelling a Ride Request', () => {
       expect(await pausedForS()).toBe(15 * 60);
     });
 
+    it('counts when the Sandbox stopped before the Rider could be picked up', async () => {
+      const { lateCancels, requestRide, clock, open, pausedForS } = await frequentCanceller(undefined, 20 * MINUTE);
+      await lateCancels(2);
+      await requestRide();
+      // By the clock alone the Rider would have been picked up, but nothing happens while a Sandbox is stopped.
+      clock.advance(25 * MINUTE);
+
+      await open(true);
+
+      expect(await pausedForS()).toBe(15 * 60);
+    });
+
+    it('does not count during a Ride', async () => {
+      const { requestRide, after, open, pausedForS } = await frequentCanceller(undefined, GRACE_MS);
+      for (let n = 0; n < 3; n += 1) {
+        await requestRide();
+        expect((await after(ACCEPT_MS + MINUTE)).ride).not.toBeNull();
+        await open(true);
+      }
+
+      expect(await pausedForS()).toBeNull();
+    });
+
     it('does not count while still searching', async () => {
       const { requestRide, open, pausedForS } = await frequentCanceller();
       for (let n = 0; n < 8; n += 1) {
@@ -425,6 +450,15 @@ describe('Cancelling a Ride Request', () => {
       await after(63_000);
 
       expect((await cancel(409)).body.message).toMatch(/no open Ride Request/i);
+    });
+
+    it('once the Rider has been picked up', async () => {
+      const { requestRide, cancel, after } = await rider(undefined, undefined, GRACE_MS);
+      await requestRide();
+      const { ride } = await after(ACCEPT_MS + MINUTE);
+
+      expect((await cancel(409)).body.message).toMatch(/no open Ride Request/i);
+      expect((await after(0)).ride?.id).toBe(ride!.id);
     });
 
     it('when the Sandbox has stopped', async () => {

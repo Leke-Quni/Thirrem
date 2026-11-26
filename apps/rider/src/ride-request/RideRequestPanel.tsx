@@ -1,14 +1,13 @@
-import type { MatchedDriver, RideRequest } from '@thirrem/types';
+import type { RideRequest } from '@thirrem/types';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { formatCountdown, formatFare } from '../map/format';
-import { pinText } from '../map/pin-text';
+import { formatCountdown } from '../map/format';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
-import { useStreetName } from '../map/useStreetName';
 import { VEHICLE_TYPE_NAMES } from '../map/VehicleTypeList';
 import { ArrivalStatus } from './ArrivalStatus';
 import { cancelQuestion, LOCK_TEXT } from './cancel-text';
 import { HoldButton } from './HoldButton';
+import { DriverCard, RideSummary } from './ride-details';
 import { useCancelRide } from './useCancelRide';
 
 interface RideRequestPanelProps {
@@ -28,42 +27,10 @@ interface RideRequestPanelProps {
   focusTitle: boolean;
 }
 
-const rating = new Intl.NumberFormat('en-IE', { minimumFractionDigits: 1 });
-
-function DriverCard({ driver }: { driver: MatchedDriver }) {
-  return (
-    <div className="driver-card">
-      <p className="driver-name" translate="no">
-        {driver.name}
-      </p>
-      <p className="driver-rating">Rated {rating.format(driver.rating)} out of 5</p>
-      <p className="driver-vehicle">
-        {driver.vehicle.colour} <span translate="no">{driver.vehicle.model}</span>
-      </p>
-      <p className="driver-plate">
-        <span className="sr-only">Number plate </span>
-        <span translate="no">{driver.vehicle.plate}</span>
-      </p>
-    </div>
-  );
-}
-
-function Point({ label, point }: { label: string; point: PlanPoint | null }) {
-  const street = useStreetName(point);
-  const text = point?.origin === 'device' ? 'Your location' : pinText(point, street);
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{text || 'Finding the street…'}</dd>
-    </div>
-  );
-}
-
 export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNew, onCancelled, onRouting, retry, onChange, focusTitle }: RideRequestPanelProps) {
   const { status, driver, approach, offers, vehicleType, cancellation } = rideRequest;
   const failed = status === 'failed';
   const type = VEHICLE_TYPE_NAMES[vehicleType];
-  const quote = fare.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
   const [confirming, setConfirming] = useState<'cancel' | 'new' | null>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const cancelStart = useRef<HTMLButtonElement>(null);
@@ -104,7 +71,8 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
       </h1>
       {approach && (
         <ArrivalStatus
-          approach={approach}
+          progress={approach}
+          to="pickup"
           onRouting={() => {
             // The button pressed is about to go, so focus is moved somewhere that stays.
             title.current?.focus({ preventScroll: true });
@@ -133,20 +101,9 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
           </p>
         )}
       </div>
-      {driver && <p className="request-note">A simulated Driver. Getting picked up is not part of the demo yet.</p>}
+      {driver && <p className="request-note">A simulated Driver. Your Ride starts once they have picked you up.</p>}
 
-      <dl className="request-summary">
-        <Point label="Pickup Point" point={pickup} />
-        <Point label="Drop-off Point" point={dropoff} />
-        <div>
-          <dt>Vehicle Type</dt>
-          <dd>{type}</dd>
-        </div>
-        <div>
-          <dt>Fare</dt>
-          <dd>{quote ? formatFare(quote.amountCents) : fare.status === 'error' ? 'Unavailable' : 'Loading…'}</dd>
-        </div>
-      </dl>
+      <RideSummary pickup={pickup} dropoff={dropoff} vehicleType={vehicleType} fare={fare} />
 
       {failed ? (
         <div className="request-reset">
