@@ -12,8 +12,25 @@ import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
 import { CancelHistoryRepository } from './dispatch/cancel-history.repository.js';
 import { InMemoryCancelHistoryRepository } from './dispatch/in-memory-cancel-history.repository.js';
+import { RidePaymentLedger } from './dispatch/ride-payment-ledger.js';
+import { ReceiptService } from './dispatch/receipt.service.js';
+import { RiderReceiptController } from './dispatch/rider-receipt.controller.js';
 import { RideRequestService } from './dispatch/ride-request.service.js';
+import { RideSettlementTimer } from './dispatch/ride-settlement-timer.js';
 import { RiderRideRequestController } from './dispatch/rider-ride-request.controller.js';
+import { RiderUnpaidFareController } from './dispatch/rider-unpaid-fare.controller.js';
+import { UnpaidFareService } from './dispatch/unpaid-fare.service.js';
+import { FarePaymentService } from './payments/fare-payment.service.js';
+import { PaymentMethodRepository } from './payments/payment-method.repository.js';
+import { PaymentMethodService } from './payments/payment-method.service.js';
+import { PaymentService } from './payments/payment.service.js';
+import { PgPaymentMethodRepository } from './payments/pg-payment-method.repository.js';
+import { RiderPaymentMethodController } from './payments/rider-payment-method.controller.js';
+import { PgRidePaymentRepository } from './payments/pg-ride-payment.repository.js';
+import { RidePaymentRepository } from './payments/ride-payment.repository.js';
+import { RidePaymentService } from './payments/ride-payment.service.js';
+import { StripePaymentService } from './payments/stripe-payment.service.js';
+import { UnavailablePaymentService } from './payments/unavailable-payment.service.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
 import { CachingRoutingService } from './routing/caching-routing.service.js';
 import { OsrmRoutingService } from './routing/osrm-routing.service.js';
@@ -23,10 +40,11 @@ import { CachingPlaceSearchService } from './places/caching-place-search.service
 import { PhotonPlaceSearchService } from './places/photon-place-search.service.js';
 import { PlaceSearchService } from './places/place-search.service.js';
 import { RiderPlacesController } from './places/rider-places.controller.js';
-import { AuthRateLimitGuard, FareRateLimitGuard, RATE_LIMIT, RideRequestRateLimitGuard, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SandboxRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
+import { AuthRateLimitGuard, FareRateLimitGuard, PaymentRateLimitGuard, RATE_LIMIT, RideRequestRateLimitGuard, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SandboxRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
 import { AreaRepository } from './sandbox/area.repository.js';
 import { AreaService } from './sandbox/area.service.js';
 import { InMemoryAreaRepository } from './sandbox/in-memory-area.repository.js';
+import { JourneyLedger } from './sandbox/journey-ledger.js';
 import { InMemorySandboxRepository } from './sandbox/in-memory-sandbox.repository.js';
 import { OsrmRoadService } from './sandbox/osrm-road-service.js';
 import { Pacer, SystemPacer } from './sandbox/pacer.js';
@@ -43,7 +61,7 @@ import { SimulationClock, SystemClock } from './simulation-clock/simulation-cloc
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController, RiderPaymentMethodController, RiderUnpaidFareController, RiderReceiptController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -56,6 +74,21 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     {
       provide: RoutingService,
       useFactory: (config: AppConfig) => new CachingRoutingService(new OsrmRoutingService(config.osrmUrl)),
+      inject: [APP_CONFIG],
+    },
+    PaymentRateLimitGuard,
+    PaymentMethodService,
+    RidePaymentService,
+    FarePaymentService,
+    { provide: JourneyLedger, useClass: RidePaymentLedger },
+    RideSettlementTimer,
+    UnpaidFareService,
+    ReceiptService,
+    { provide: RidePaymentRepository, useClass: PgRidePaymentRepository },
+    { provide: PaymentMethodRepository, useClass: PgPaymentMethodRepository },
+    {
+      provide: PaymentService,
+      useFactory: (config: AppConfig) => (config.stripe ? new StripePaymentService(config.stripe) : new UnavailablePaymentService()),
       inject: [APP_CONFIG],
     },
     RouteRateLimitGuard,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateFares } from '../src/fares/fare-calculator.js';
+import { calculateFare, calculateFareBreakdown, calculateFares } from '../src/fares/fare-calculator.js';
 import { type FareRates, FARE_RATES } from '../src/fares/fare-rates.js';
 
 const amounts = (distanceM: number, durationS: number, rates: FareRates = FARE_RATES) =>
@@ -61,5 +61,27 @@ describe('Fare calculation', () => {
     };
 
     expect(amounts(2000, 120, rates)).toEqual([180, 320, 460, 600]);
+  });
+});
+
+describe('Fare breakdown', () => {
+  const economy = (distanceM: number, durationS: number) => calculateFareBreakdown(FARE_RATES, 'economy', { distanceM, durationS });
+
+  it('splits a long trip into its base, distance, time and long-distance amounts', () => {
+    expect(economy(30_000, 2400)).toEqual({ baseCents: 150, distanceCents: 390, timeCents: 280, longDistanceCents: 850 });
+  });
+
+  it('adds up to the Fare, which is rounded only once', () => {
+    // 150 + 0.65 + 0.7: rounding each part on its own would give 152.
+    expect(economy(50, 6)).toEqual({ baseCents: 150, distanceCents: 1, timeCents: 0, longDistanceCents: 0 });
+  });
+
+  it.each([[0, 0], [1, 1], [2_345, 271], [19_999, 1_799], [20_001, 1_801], [75_843, 4_517]])('adds up to the Fare of %i m and %i s for every Vehicle Type', (distanceM, durationS) => {
+    for (const vehicleType of ['economy', 'comfort', 'xl', 'electric'] as const) {
+      const parts = Object.values(calculateFareBreakdown(FARE_RATES, vehicleType, { distanceM, durationS }));
+
+      expect(parts.reduce((sum, cents) => sum + cents)).toBe(calculateFare(FARE_RATES, vehicleType, { distanceM, durationS }).amountCents);
+      expect(parts.every((cents) => Number.isInteger(cents) && cents >= 0)).toBe(true);
+    }
   });
 });

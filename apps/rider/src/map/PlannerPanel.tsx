@@ -1,5 +1,8 @@
-import type { PlaceResult, VehicleType } from '@thirrem/types';
+import type { PlaceResult, UnpaidFare, VehicleType } from '@thirrem/types';
 import { type CSSProperties, useEffect, useRef } from 'react';
+import type { RequestFailure } from '../payment/payment-refusal';
+import { RequestError } from '../payment/RequestError';
+import { UnpaidFareNotice } from '../payment/UnpaidFareNotice';
 import { formatCountdown, formatDistance, formatDuration } from './format';
 import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
@@ -27,8 +30,9 @@ interface PlannerPanelProps {
   onRetryFare(): void;
   /** Set when the planner takes the place of a Ride Request, whose buttons held focus. */
   focusTitle: boolean;
+  unpaidFares: UnpaidFare[];
   /** `pausedForS` counts down while the Rider cannot request a Ride, having cancelled too often. */
-  request: { ready: boolean; pending: boolean; error: string | null; pausedForS: number | null; onRequest(): void };
+  request: { ready: boolean; pending: boolean; verifying: boolean; error: RequestFailure | null; pausedForS: number | null; onRequest(): void };
 }
 
 const SLOTS: Array<{ slot: PinSlot; label: string }> = [
@@ -57,7 +61,7 @@ function Glyph({ slot }: { slot: PinSlot }) {
   );
 }
 
-export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry, onChooseVehicleType, onRetryFare, focusTitle, request }: PlannerPanelProps) {
+export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locating, locateMessage, onLocate, onSelect, onRemove, onChoosePlace, onRetry, onChooseVehicleType, onRetryFare, focusTitle, unpaidFares, request }: PlannerPanelProps) {
   const near = plan.pickup ?? plan.dropoff;
   const streets: Record<PinSlot, StreetLookup> = { pickup: useStreetName(plan.pickup), dropoff: useStreetName(plan.dropoff) };
   const title = useRef<HTMLHeadingElement>(null);
@@ -162,15 +166,13 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
             </p>
           </div>
         )}
+        <UnpaidFareNotice fares={unpaidFares} />
         <button type="button" className="btn primary" disabled={!requestable || request.pending} aria-describedby={request.pausedForS ? 'pause-note' : undefined} onClick={request.onRequest}>
           {request.pending && <span className="spinner small" aria-hidden="true" />}
-          {request.pending ? 'Requesting…' : `Request ${VEHICLE_TYPE_NAMES[vehicleType]}`}
+          {request.verifying ? 'Checking with your bank…' : request.pending ? 'Requesting…' : `Request ${VEHICLE_TYPE_NAMES[vehicleType]}`}
         </button>
-        {request.error && (
-          <div className="form-error" role="alert">
-            <span>{request.error}</span>
-          </div>
-        )}
+        {/* The notice says it already, with the amount. */}
+        <RequestError failure={unpaidFares.length > 0 && request.error?.payment === 'FARE_UNPAID' ? null : request.error} />
       </div>
     </section>
   );

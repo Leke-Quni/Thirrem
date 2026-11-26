@@ -11,6 +11,7 @@ import { SimulationClock } from '../simulation-clock/simulation-clock.js';
 import { type Area, SAME_PLACE_M } from './area.js';
 import { AreaService } from './area.service.js';
 import { distanceM } from './driver-placement.js';
+import { JourneyLedger } from './journey-ledger.js';
 import { RiderActivity } from './rider-activity.js';
 import { driverAt, resumedDriver, sandboxDriver } from './sandbox-driver.js';
 import { discardCutoffMs, runningCutoffMs, sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
@@ -33,12 +34,15 @@ function hasRideUnderWay({ rideRequest, resumedAtMs, lastActiveMs }: Sandbox, no
 @Injectable()
 export class SandboxService extends RiderActivity {
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** How many changes that count as activity each account has under way or waiting. */
+  private readonly activities = new Map<string, number>();
 
   constructor(
     private readonly sandboxes: SandboxRepository,
     private readonly areas: AreaService,
     private readonly cancels: CancelHistoryRepository,
     private readonly clock: SimulationClock,
+    private readonly ledger: JourneyLedger,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     super();
@@ -49,14 +53,15 @@ export class SandboxService extends RiderActivity {
    * A `fresh` one replaces any the account has. Changes to one account's Sandbox take turns, so they never place two sets of Drivers.
    */
   async open(accountId: string, centre: Coordinate, fresh = false): Promise<SandboxResponse> {
-    const sandbox = await this.inTurn(accountId, () => this.reuseOrPlace(accountId, centre, fresh));
+    const sandbox = await this.asActivity(accountId, () => this.reuseOrPlace(accountId, centre, fresh));
+    await this.ledger.settle(accountId);
     const history = await this.cancels.findByAccount(accountId);
     return this.view(sandbox, history, this.clock.now().getTime());
   }
 
   record(accountId: string): Promise<void> {
     // A change already under way records activity itself, and a route request must not wait for Drivers to be placed.
-    if (this.queues.has(accountId)) return Promise.resolve();
+    if (this.activities.has(accountId)) return Promise.resolve();
     return this.inTurn(accountId, async () => {
       const sandbox = await this.sandboxes.findByAccount(accountId);
       const now = this.clock.now().getTime();
@@ -82,7 +87,7 @@ export class SandboxService extends RiderActivity {
     accountId: string,
     change: (sandbox: Sandbox, drivers: SimulatedDriver[], nowMs: number, positionAt: (driverId: string, atMs: number) => PathPosition) => Changed<T> | Promise<Changed<T>>,
   ): Promise<T> {
-    return this.inTurn(accountId, async () => {
+    return this.asActivity(accountId, async () => {
       const stored = await this.sandboxes.findByAccount(accountId);
       const now = this.clock.now().getTime();
       if (!stored || sandboxStatus(stored.lastActiveMs, now) !== 'running') throw new ConflictException('Your Sandbox is not running. Resume it, then try again.');
@@ -100,6 +105,11 @@ export class SandboxService extends RiderActivity {
       const sandbox = await this.sandboxes.findByAccount(accountId);
       if (sandbox) await this.sandboxes.save(accountId, amend(sandbox, this.clock.now().getTime()));
     });
+  }
+
+  /** Looks at the account's Sandbox as it is stored, in turn with changes to it. Looking is not activity. */
+  inspect<T>(accountId: string, look: (sandbox: Sandbox | null, nowMs: number) => Promise<T>): Promise<T> {
+    return this.inTurn(accountId, async () => look(await this.sandboxes.findByAccount(accountId), this.clock.now().getTime()));
   }
 
   discardExpired(): Promise<void> {
@@ -136,6 +146,15 @@ export class SandboxService extends RiderActivity {
     return { ...sandbox, drivers: sandbox.drivers.map((driver) => (driver.id === matchedId ? { ...driver, parked } : driver)) };
   }
 
+  private asActivity<T>(accountId: string, task: () => Promise<T>): Promise<T> {
+    this.activities.set(accountId, (this.activities.get(accountId) ?? 0) + 1);
+    return this.inTurn(accountId, task).finally(() => {
+      const left = this.activities.get(accountId)! - 1;
+      if (left) this.activities.set(accountId, left);
+      else this.activities.delete(accountId);
+    });
+  }
+
   private inTurn<T>(accountId: string, task: () => Promise<T>): Promise<T> {
     const previous = this.queues.get(accountId) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(task);
@@ -160,6 +179,7 @@ export class SandboxService extends RiderActivity {
     const now = this.clock.now().getTime();
     const sandbox = reused ? this.active(reused, now) : this.create(centre, area, now);
     if (!(await this.sandboxes.saveIfRoom(accountId, sandbox, runningCutoffMs(now), this.config.sandboxLimit))) throw busy();
+    await this.ledger.record(accountId, existing, askedAtMs, !reused);
     // Replacing a Sandbox drops its Ride Request, which counts as cancelling it.
     if (fresh && open) await recordCancel(this.cancels, accountId, cancelling(open, askedAtMs), askedAtMs);
     this.areas.keepFetching(area);

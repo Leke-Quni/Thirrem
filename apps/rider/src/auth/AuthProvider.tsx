@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { forgetReceiptCount } from '../receipt/receipt-count';
 import { authApi } from './auth-api';
 import { shouldEndSession } from './session-check';
 
@@ -41,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!current) return;
         if (shouldEndSession(error)) {
           localStorage.removeItem(TOKEN_KEY);
+          forgetReceiptCount();
           if (current) setExpired(true);
         } else setUnreachable(true);
       })
@@ -56,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const open = useCallback((session: { email: string; token: string }) => {
     localStorage.setItem(TOKEN_KEY, session.token);
+    // It may be another Rider's.
+    forgetReceiptCount();
     setEmail(session.email);
     setExpired(false);
   }, []);
@@ -71,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: async (e, p) => open(await authApi.login(e, p)),
       logout: () => {
         localStorage.removeItem(TOKEN_KEY);
+        forgetReceiptCount();
         setEmail(null);
         setExpired(false);
       },
