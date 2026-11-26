@@ -23,4 +23,4 @@ Dev servers use 5001 to 5004 so they do not clash with other projects on this ma
 | Driver app | 5003 |
 | Admin app | 5004 |
 
-Run them with `yarn dev:api` and `yarn dev:rider`. Postgres is on 5433. Playwright uses its own ports (3100 for the API, 5173 for the Rider app) so tests do not collide with dev servers.
+Run them with `yarn dev:api`, `yarn dev:rider` and `yarn dev:driver`. Postgres is on 5433. Playwright uses its own ports (3100 for the API, 5173 for the Rider app, 5174 for the Driver app) so tests do not collide with dev servers.

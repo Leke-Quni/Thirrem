@@ -1,6 +1,6 @@
 # Design
 
-Chosen with the owner from three mocked options: **Premium & cinematic**, **purple accent**, **dark first with a light toggle**. Tokens live in `packages/ui/src/theme.css` and are shared by all three apps.
+Chosen with the owner from three mocked options: **Premium & cinematic**, **purple accent**, **dark first with a light toggle**. Tokens live in `packages/ui/src/theme.css` and are shared by all three apps. The landing, login and signup styles they share are in `packages/ui/src/pages.css`.
 
 ## Look
 
@@ -23,6 +23,18 @@ Chosen with the owner from three mocked options: **Premium & cinematic**, **purp
 | `--accent-text` | `#a78bfa` | `#6d28d9` | Links and accent words on the page background |
 
 `#8b5cf6` with white text is only 4.2:1, so it is never used behind text. Use `--accent-solid` for fills.
+
+### Driver accent
+
+The Driver app is teal, so a visitor with both apps open can tell them apart. Everything else matches the Rider app, with a "Driver" tag beside the logo. The overrides are at the top of `apps/driver/src/styles.css`.
+
+| Token | Dark | Light |
+|---|---|---|
+| `--accent` | `#14b8a6` | `#0d9488` (3.3:1, for the focus ring) |
+| `--accent-solid` | `#0f766e` | `#0f766e` (5.5:1 with white) |
+| `--accent-text` | `#2dd4bf` | `#0f6b64` |
+
+`#14b8a6` is only 2.5:1 with white, so it is never used behind text. Success green is close to teal, so success states also carry an icon or text.
 
 ## Theme
 

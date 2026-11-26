@@ -7,6 +7,7 @@ export default defineConfig({
   projects: [
     { name: 'api', testMatch: 'smoke.spec.ts', use: { baseURL: 'http://localhost:3100' } },
     { name: 'rider', testMatch: 'rider.spec.ts', use: { baseURL: 'http://localhost:5173' } },
+    { name: 'driver', testMatch: 'driver.spec.ts', use: { baseURL: 'http://localhost:5174' } },
   ],
   webServer: [
     {
@@ -19,6 +20,13 @@ export default defineConfig({
     {
       command: 'yarn workspace @thirrem/rider dev --port 5173 --strictPort',
       url: 'http://localhost:5173',
+      env: { API_URL: 'http://localhost:3100' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'yarn workspace @thirrem/driver dev --port 5174 --strictPort',
+      url: 'http://localhost:5174',
       env: { API_URL: 'http://localhost:3100' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
