@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
-  workers: 4,
+  workers: process.env.CI ? 2 : 4,
   projects: [
     { name: 'api', testMatch: 'smoke.spec.ts', use: { baseURL: 'http://localhost:3100' } },
     { name: 'rider', testMatch: 'rider.spec.ts', use: { baseURL: 'http://localhost:5173' } },
