@@ -53,6 +53,7 @@ Both can change or disappear. To swap the router, point `OSRM_URL` at any OSRM-c
 | `PHOTON_URL` | API | Photon-compatible geocoder. Default `https://photon.komoot.io`. |
 | `SEARCH_RATE_LIMIT` | API | Place searches per client per minute. Default 60. |
 | `ROUTE_RATE_LIMIT` | API | Route requests per client per minute. Default 30. |
+| `DRIVER_APPROVAL_MS` | API | How long after a vehicle is registered the simulated Admin approves it. Default 10000. |
 | `TRUST_PROXY` | API | `true` behind Funnel so rate limiting sees the real client IP. |
 | `POSTGRES_PASSWORD` | Compose | Required, no default. |
 | `API_BASE_URL` | Vercel build | Public API URL. |

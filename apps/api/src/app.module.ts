@@ -8,6 +8,10 @@ import { RiderAuthController } from './auth/rider-auth.controller.js';
 import type { AppConfig } from './config/app-config.js';
 import { APP_CONFIG, appConfigProvider } from './config/app-config.provider.js';
 import { DatabaseService } from './database/database.service.js';
+import { DriverVehicleController } from './onboarding/driver-vehicle.controller.js';
+import { PgVehicleRepository } from './onboarding/pg-vehicle.repository.js';
+import { VehicleRepository } from './onboarding/vehicle.repository.js';
+import { VehicleService } from './onboarding/vehicle.service.js';
 import { RiderFareController } from './fares/rider-fare.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { ROAD_GRAPH, type RoadGraph } from './road-graph/road-graph.js';
@@ -44,7 +48,7 @@ import { SimulationClock, SystemClock } from './simulation-clock/simulation-cloc
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, DriverAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, DriverAuthController, DriverVehicleController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -53,6 +57,8 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     AuthService,
     { provide: AccountRepository, useClass: PgAccountRepository },
     { provide: PasswordHasher, useClass: ScryptPasswordHasher },
+    VehicleService,
+    { provide: VehicleRepository, useClass: PgVehicleRepository },
     { provide: SimulationClock, useClass: SystemClock },
     {
       provide: RoutingService,

@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { HomeBar } from '../components/HomeBar';
+import { VehiclePanel } from '../vehicle/VehiclePanel';
 import { HomeSkeleton } from './HomeSkeleton';
 import { SessionUnavailable } from './SessionUnavailable';
 
@@ -30,10 +31,7 @@ export function Home() {
           </button>
         }
       />
-      <main className="auth-card home-card">
-        <h1>Your Driver account is ready</h1>
-        <p>Adding a vehicle and getting approved are still being built. There is nothing else to do here yet.</p>
-      </main>
+      <VehiclePanel />
     </div>
   );
 }

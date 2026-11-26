@@ -4,14 +4,14 @@ import { RequestIllustration } from '../components/RequestIllustration';
 
 const DRIVE_STEPS = [
   { title: 'Sign up', text: 'Email and password. Your Driver account is separate from the Rider app.', ready: true },
-  { title: 'Add your vehicle', text: 'Register one vehicle and choose its Vehicle Type.', ready: false },
-  { title: 'Get approved', text: 'A simulated Admin checks your application in about 10 seconds.', ready: false },
+  { title: 'Add your vehicle', text: 'Register one vehicle and choose its Vehicle Type.', ready: true },
+  { title: 'Get approved', text: 'A simulated Admin checks your application in about 10 seconds.', ready: true },
   { title: 'Take Ride Requests', text: 'Simulated Riders ask for rides, and you accept or decline.', ready: false },
 ];
 
 const APPS = [
   { name: 'Rider', text: 'Request rides on a map of Gjakova and follow the car.', current: false },
-  { name: 'Driver', text: 'Register a vehicle and take simulated Ride Requests. You are here.', current: true },
+  { name: 'Driver', text: 'Register a vehicle and get approved. Ride Requests are coming. You are here.', current: true },
   { name: 'Admin', text: 'Approve Drivers and watch the fleet. Still being built.', current: false },
 ];
 
@@ -22,7 +22,7 @@ const FAQ = [
   },
   {
     q: 'What can I do today?',
-    a: 'Create a Driver account and log in. Vehicle registration, approval and Ride Requests are still being built.',
+    a: 'Create a Driver account, register a vehicle and get approved. Ride Requests are still being built.',
   },
   {
     q: 'Can I use my Rider account?',
@@ -68,8 +68,8 @@ export function Landing() {
               </span>
               <h1>Take the wheel with nobody on board.</h1>
               <p className="lead">
-                The Driver side of a ride-hailing platform set in Gjakova, built to be tried alone. Create your account now; vehicles,
-                approval and Ride Requests are coming next.
+                The Driver side of a ride-hailing platform set in Gjakova, built to be tried alone. Sign up, add a vehicle and get
+                approved now; Ride Requests are coming next.
               </p>
               <div className="cta">
                 <Link className="btn primary" to="/signup">
@@ -89,7 +89,7 @@ export function Landing() {
               <h2 id="how-title">
                 From <span className="nowrap">sign-up</span> to the road
               </h2>
-              <p>The first step works today. The others show what is being built.</p>
+              <p>The first three steps work today. The last is being built.</p>
             </div>
             <ol className="route-steps">
               {DRIVE_STEPS.map((step) => (

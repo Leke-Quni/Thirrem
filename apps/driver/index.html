@@ -28,7 +28,7 @@
       .boot-toggle { width: 40px; height: 40px; box-sizing: border-box; border-radius: 12px; border: 1px solid var(--boot-border); background: var(--boot-card); }
       .boot-logout { width: 104px; height: 48px; border-radius: 12px; }
       .boot-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-      .boot-card { box-sizing: border-box; width: calc(100% - 32px); max-width: 440px; min-height: 300px; margin: 40px auto 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border-radius: 16px; background: var(--boot-card); border: 1px solid var(--boot-border); }
+      .boot-card { box-sizing: border-box; width: calc(100% - 32px); max-width: 440px; min-height: 678px; margin: 40px auto 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border-radius: 16px; background: var(--boot-card); border: 1px solid var(--boot-border); }
       .boot-card p { margin: 0; }
       .boot-track, .boot-line { fill: none; stroke-linecap: round; stroke-width: 5; }
       .boot-track { stroke: var(--boot-track); }
@@ -39,7 +39,7 @@
       @keyframes boot-pin { 0%, 55% { opacity: 0.35; transform: translateY(-4px) scale(0.9); } 75%, 100% { opacity: 1; transform: none; } }
       @keyframes boot-shimmer { to { background-position: -200% 0; } }
       @media (max-width: 560px) { .boot-who { display: none; } }
-      @media (max-width: 440px) { .boot-bar { padding: 0 12px; } .boot-logo { gap: 8px; font-size: 19px; } }
+      @media (max-width: 440px) { .boot-bar { padding: 0 12px; } .boot-logo { gap: 8px; font-size: 19px; } .boot-links { gap: 8px; } .boot-logout { width: 88px; } .boot-card { min-height: 654px; } }
       @media (prefers-reduced-motion: reduce) { .boot-line, .boot-pin, .boot-who, .boot-logout { animation: none; } .boot-line { stroke-dashoffset: 0; } }
     </style>
   </head>

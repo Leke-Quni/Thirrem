@@ -173,3 +173,22 @@ export interface SandboxLiveMessage {
 
 /** Why the live feed closes: an unknown session, no Sandbox to watch, no token sent in time, or a stopped Sandbox. */
 export type SandboxLiveCloseCode = 4401 | 4404 | 4408 | 4410;
+
+export type ApprovalStatus = 'pending' | 'approved';
+
+export interface DriverVehicle {
+  vehicleType: VehicleType;
+  model: string;
+  colour: string;
+  plate: string;
+  status: ApprovalStatus;
+}
+
+export interface DriverVehicleResponse {
+  vehicle: DriverVehicle | null;
+}
+
+export interface VehicleOptionsResponse {
+  models: Record<VehicleType, string[]>;
+  colours: string[];
+}

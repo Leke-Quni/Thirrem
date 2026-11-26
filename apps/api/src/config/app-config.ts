@@ -16,6 +16,8 @@ export interface AppConfig {
   sandboxSweepMs: number;
   /** The most Sandboxes that run at once. */
   sandboxLimit: number;
+  /** How long after a vehicle is registered the simulated Admin approves it. */
+  driverApprovalMs: number;
   dispatch: {
     /** How long a broadcast waits for a Driver to accept before the search widens. */
     acceptWindowMs: number;
@@ -56,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
     sandboxLimit: 30,
+    driverApprovalMs: Number(env.DRIVER_APPROVAL_MS ?? 10_000),
     dispatch: { acceptWindowMs: Number(env.DISPATCH_ACCEPT_WINDOW_MS ?? 9_000), acceptAfterMs: { min: 2_000, max: 8_000 }, boardingMs: Number(env.DISPATCH_BOARDING_MS ?? 15_000), stopMs: Number(env.DISPATCH_STOP_MS ?? 5_000) },
   };
 }
