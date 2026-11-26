@@ -1,5 +1,7 @@
 import type { PlaceResult, VehicleType } from '@thirrem/types';
 import { type CSSProperties, useEffect, useRef } from 'react';
+import type { RequestFailure } from '../payment/payment-refusal';
+import { RequestError } from '../payment/RequestError';
 import { formatCountdown, formatDistance, formatDuration } from './format';
 import { PlaceSearch } from './PlaceSearch';
 import { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from './pin-shape';
@@ -28,7 +30,7 @@ interface PlannerPanelProps {
   /** Set when the planner takes the place of a Ride Request, whose buttons held focus. */
   focusTitle: boolean;
   /** `pausedForS` counts down while the Rider cannot request a Ride, having cancelled too often. */
-  request: { ready: boolean; pending: boolean; error: string | null; pausedForS: number | null; onRequest(): void };
+  request: { ready: boolean; pending: boolean; verifying: boolean; error: RequestFailure | null; pausedForS: number | null; onRequest(): void };
 }
 
 const SLOTS: Array<{ slot: PinSlot; label: string }> = [
@@ -164,13 +166,9 @@ export function PlannerPanel({ plan, route, fare, vehicleType, mapReady, locatin
         )}
         <button type="button" className="btn primary" disabled={!requestable || request.pending} aria-describedby={request.pausedForS ? 'pause-note' : undefined} onClick={request.onRequest}>
           {request.pending && <span className="spinner small" aria-hidden="true" />}
-          {request.pending ? 'Requesting…' : `Request ${VEHICLE_TYPE_NAMES[vehicleType]}`}
+          {request.verifying ? 'Checking with your bank…' : request.pending ? 'Requesting…' : `Request ${VEHICLE_TYPE_NAMES[vehicleType]}`}
         </button>
-        {request.error && (
-          <div className="form-error" role="alert">
-            <span>{request.error}</span>
-          </div>
-        )}
+        <RequestError failure={request.error} />
       </div>
     </section>
   );

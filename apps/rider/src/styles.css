@@ -365,6 +365,10 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .request-ride { margin-top: 12px; display: grid; gap: 8px; }
 .request-ride .btn { height: 44px; padding-block: 0; }
 .request-ride .btn:disabled { cursor: not-allowed; }
+.payment-problem { display: grid; gap: 8px; }
+.payment-added { margin: 0; font-size: 14px; line-height: 1.5; }
+.payment-added:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.payment-problem .btn[aria-disabled='true'] { cursor: progress; transform: none; filter: none; }
 .request-ride .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
 .planner h1:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 .ride-request { display: flex; flex-direction: column; gap: 16px; }

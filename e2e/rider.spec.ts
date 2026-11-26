@@ -1554,6 +1554,98 @@ test.describe('Rider Ride Request', () => {
     expect(sandbox.asked).toEqual([expect.objectContaining({ vehicleType: 'economy' })]);
   });
 
+  /** Stands in for Stripe.js, whose bank check the Rider passes as soon as the test calls `window.passBankCheck`. */
+  async function fakeBankCheck(page: Page) {
+    await page.route('https://js.stripe.com/**', (r) =>
+      r.fulfill({
+        contentType: 'text/javascript',
+        body: `window.bankChecks = []; window.Stripe = () => ({ _registerWrapper() {}, registerAppInfo() {}, handleNextAction({ clientSecret }) { window.bankChecks.push(clientSecret); return new Promise((resolve) => (window.passBankCheck = () => resolve({}))); } });`,
+      }),
+    );
+  }
+  const verification = { code: 'PAYMENT_VERIFICATION', message: 'Your bank needs to verify this payment.', holdId: 'hold-1', clientSecret: 'pi_1_secret_a', publishableKey: 'pk_test_browser' };
+
+  test('sends the names of the pins, for the payment records', async ({ page }) => {
+    const { sandbox } = await openPlanner(page);
+    await placeBothPins(page);
+
+    await ask(page).click();
+
+    await expect.poll(() => sandbox.asked).toEqual([expect.objectContaining({ pickupName: 'School Road', dropoffName: 'School Road' })]);
+  });
+
+  test('asks a Rider with no saved method to add one, with a test card a click away', async ({ page }) => {
+    await openPlanner(page);
+    await page.route(
+      '**/rider/ride-requests',
+      (r) => r.fulfill({ status: 402, json: { code: 'PAYMENT_METHOD_REQUIRED', message: 'Add a payment method before requesting a Ride.' } }),
+      { times: 1 },
+    );
+    await page.route('**/rider/payment-methods/test-card', (r) => r.fulfill({ status: 201, json: { publishableKey: 'pk_test_browser', methods: [] } }));
+    await placeBothPins(page);
+    await ask(page).click();
+    await expect(page.getByRole('alert')).toHaveText('Add a payment method before requesting a Ride.');
+    await expect(page.getByRole('link', { name: 'Add a card' })).toHaveAttribute('href', '/payment');
+
+    await page.getByRole('button', { name: 'Use a test card' }).click();
+
+    await expect(page.getByRole('status').filter({ hasText: 'Test card saved. Try again now.' })).toBeFocused();
+    await ask(page).click();
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeVisible();
+  });
+
+  test('says a card was declined, and where to change it', async ({ page }) => {
+    await openPlanner(page);
+    const message = 'Your card was declined. Change your payment method, then try again.';
+    await page.route('**/rider/ride-requests', (r) => r.fulfill({ status: 402, json: { code: 'PAYMENT_DECLINED', message } }));
+    await placeBothPins(page);
+
+    await ask(page).click();
+
+    await expect(page.getByRole('alert')).toHaveText(message);
+    await expect(ask(page)).toBeEnabled();
+    await page.getByRole('link', { name: 'Change payment method' }).click();
+    await expect(page).toHaveURL(/\/payment$/);
+  });
+
+  test('takes the Rider through their bank’s check, then requests the Ride on the same hold', async ({ page }) => {
+    await fakeBankCheck(page);
+    await openPlanner(page);
+    const holds: unknown[] = [];
+    await page.route('**/rider/ride-requests', (r) => {
+      holds.push(r.request().postDataJSON().holdId);
+      return holds.length === 1 ? r.fulfill({ status: 402, json: verification }) : r.fallback();
+    });
+    await placeBothPins(page);
+
+    await ask(page).click();
+
+    await expect(page.getByRole('button', { name: 'Checking with your bank…' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { bankChecks?: string[] }).bankChecks)).toEqual(['pi_1_secret_a']);
+    await page.evaluate(() => (window as unknown as { passBankCheck(): void }).passBankCheck());
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeVisible();
+    expect(holds).toEqual([undefined, 'hold-1']);
+  });
+
+  test('checks with the bank before looking for a route again', async ({ page }) => {
+    await fakeBankCheck(page);
+    const { report, connections } = await openPlanner(page, { open: 'matched' });
+    const holds: unknown[] = [];
+    await page.route('**/rider/ride-requests/approach', (r) => {
+      holds.push(r.request().postDataJSON().holdId);
+      return holds.length === 1 ? r.fulfill({ status: 402, json: verification }) : r.fulfill({ status: 204, body: '' });
+    });
+    await expect.poll(() => connections.length).toBe(1);
+    report('matched', { status: 'unavailable' });
+
+    await page.getByRole('button', { name: 'Find the route again' }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { passBankCheck?: unknown }).passBankCheck !== undefined)).toBe(true);
+    await page.evaluate(() => (window as unknown as { passBankCheck(): void }).passBankCheck());
+
+    await expect(page.getByRole('status').filter({ hasText: 'Finding your Driver’s route…' })).toBeVisible();
+    expect(holds).toEqual([undefined, 'hold-1']);
+  });
+
   test("shows the matched Driver's name, vehicle and rating, and marks only their car", async ({ page }) => {
     const { report, connections } = await openPlanner(page);
     await placeBothPins(page);
@@ -1731,7 +1823,7 @@ test.describe('Rider Ride Request', () => {
     await expect(panel.getByRole('status').filter({ hasText: 'Final Fare' })).toHaveText(/Final Fare\s*€1\.99/);
     // The Fare quoted beforehand is no longer shown beside it.
     await expect(panel).not.toContainText('€2.02');
-    for (const text of ['You have arrived at your Drop-off Point.', 'Arta K.', 'TH-412-KD', 'No money was charged.']) await expect(panel).toContainText(text);
+    for (const text of ['You have arrived at your Drop-off Point.', 'Arta K.', 'TH-412-KD', 'No real money was taken.']) await expect(panel).toContainText(text);
     await expect(panel.getByRole('button', { name: 'Start a new Sandbox' })).toHaveCount(0);
   });
 
@@ -1987,6 +2079,7 @@ test.describe('Rider Ride Request', () => {
     await placeBothPins(page);
     await ask(page).click();
     await expect.poll(() => connections.length).toBe(1);
+    await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeVisible();
 
     connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: { ...sandbox.request!, offers: [] } } }));
 

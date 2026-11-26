@@ -50,7 +50,7 @@ export function Home() {
   const warning = useCancelWarning(sandbox.status === 'ready' ? sandbox.cancelWarningAtMs : undefined, Boolean(pausedForS));
   const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
   const askedHere = useRef(false);
-  const { pending, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
+  const { pending, verifying, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
     askedHere.current = true;
     requested(made);
   });
@@ -152,7 +152,7 @@ export function Home() {
               cancelled(paused);
             }}
             onStartNew={startNewRide}
-            retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
+            retry={{ ready: sandboxLive, pending, verifying, error: requestError, onRetry: request }}
             onChange={() => backToPlanner(rideRequest.id)}
           />
         ) : (
@@ -175,7 +175,7 @@ export function Home() {
               retryFare();
             }}
             focusTitle={droppedRequest.current}
-            request={{ ready: sandboxLive, pending, error: requestError, pausedForS, onRequest: request }}
+            request={{ ready: sandboxLive, pending, verifying, error: requestError, pausedForS, onRequest: request }}
           />
         )}
         <div className="map-card">

@@ -73,7 +73,7 @@ export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onR
       <DriverCard driver={ride.driver} />
       <p className="request-note">
         {finalFare
-          ? `${endedEarly ? 'Your Ride ended early, where your Driver stopped. ' : ''}A simulated Ride. No money was charged.`
+          ? `${endedEarly ? 'Your Ride ended early, where your Driver stopped. ' : ''}A simulated Ride in test mode. No real money was taken.`
           : `A simulated Driver. ${stopping ? 'Your Ride ends where your Driver stops.' : 'Your Ride ends at your Drop-off Point.'}`}
       </p>
       <RideSummary pickup={pickup} dropoff={dropoff} vehicleType={ride.vehicleType} fare={finalFare ? undefined : fare} />
