@@ -14,9 +14,15 @@ A charge fails when its hold has gone or the card refuses it. The Fare is then u
 
 Paying places a new hold for the amount due on the method the Rider chooses, and captures it, so that bank verification works as it does for a Ride Request. The default method is not changed. A hold waiting on the bank is released after 10 minutes, or when the Rider starts over, and the Fare stays unpaid. The same payment row is kept, with the newest hold, so a Ride has one record of what was paid.
 
+## Receipts
+
+A charged payment is the Ride's receipt (`GET /rider/receipts`, 6 at a time), with no separate record to keep in step. The base, distance, time and long-distance amounts are saved as the Fare falls due, so a later change of rates leaves old receipts as they were. They are rounded as a running total, so they add up to the Fare, which is still rounded once. Where the charge was limited to the quoted Fare, the receipt shows what was taken off as an amount of its own. We rejected shrinking the four amounts to fit, as they would then match no rate.
+
+The brand, last four digits and wallet of the newest hold's card are saved on the payment, so a receipt can name it after the method is removed. Payments charged before these were saved have no receipt.
+
 ## An exception to ADR 0005
 
-Sandboxes, Ride Requests and Rides are still held in memory and reset as before. Open holds and payments are kept in the database: the date, Vehicle Type, the names of the Pickup Point and Drop-off Point, distance, time, amounts held and charged, and the outcome. Money held must outlive a restart to be released, and a Rider's record of what they paid must outlive their Sandbox.
+Sandboxes, Ride Requests and Rides are still held in memory and reset as before. Open holds and payments are kept in the database: the date, Vehicle Type, the names of the Pickup Point and Drop-off Point, distance, time, amounts held and charged, what the Fare is made of, the card's brand, last four digits and wallet, and the outcome. Money held must outlive a restart to be released, and a Rider's record of what they paid must outlive their Sandbox.
 
 The names say roughly where the Rider was, which ADR 0005 avoids keeping. No coordinates are saved: a pin with no street name is kept as "Pin on the map". The app sends the names, as it is what looks them up, and the API takes them as given.
 
