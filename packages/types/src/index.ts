@@ -159,6 +159,16 @@ export interface MatchedDriver {
   vehicle: { model: string; colour: string; plate: string };
 }
 
+/** The Driver's own car in their Sandbox. */
+export type DriverCar = Pick<SimulatedDriver, 'lat' | 'lon' | 'heading' | 'vehicleType'>;
+
+/** Opened with `PUT /driver/sandbox`. `GET /driver/sandbox` reads it without counting as activity. */
+export interface DriverSandboxResponse {
+  /** A stopped Sandbox is resumed by opening it again. */
+  status: 'running' | 'stopped';
+  car: DriverCar;
+}
+
 /** The 503 answer to opening a Sandbox when as many as are allowed are already running. */
 export interface SandboxBusyResponse {
   code: 'SANDBOX_LIMIT';

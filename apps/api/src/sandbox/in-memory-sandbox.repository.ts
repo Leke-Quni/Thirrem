@@ -1,37 +1,41 @@
-import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
+import type { RunningSandboxes } from './running-sandboxes.js';
+import { SandboxStore, type StoredSandbox } from './sandbox-store.js';
 
-export class InMemorySandboxRepository extends SandboxRepository {
-  private readonly sandboxes = new Map<string, Sandbox>();
+export class InMemorySandboxRepository<T extends StoredSandbox> extends SandboxStore<T> {
+  private readonly sandboxes = new Map<string, T>();
 
-  async findByAccount(accountId: string): Promise<Sandbox | null> {
+  constructor(private readonly running: RunningSandboxes) {
+    super();
+  }
+
+  async findByAccount(accountId: string): Promise<T | null> {
     return this.sandboxes.get(accountId) ?? null;
   }
 
-  async save(accountId: string, sandbox: Sandbox): Promise<void> {
-    this.sandboxes.set(accountId, sandbox);
+  async save(accountId: string, sandbox: T): Promise<void> {
+    this.put(accountId, sandbox);
   }
 
   async hasRoom(accountId: string, runningSince: number, limit: number): Promise<boolean> {
-    return this.fewerOthersRunning(accountId, runningSince, limit);
+    return this.running.fewerOthersThan(limit, accountId, runningSince);
   }
 
-  async saveIfRoom(accountId: string, sandbox: Sandbox, runningSince: number, limit: number): Promise<boolean> {
-    if (!this.fewerOthersRunning(accountId, runningSince, limit)) return false;
-    this.sandboxes.set(accountId, sandbox);
+  async saveIfRoom(accountId: string, sandbox: T, runningSince: number, limit: number): Promise<boolean> {
+    if (!this.running.fewerOthersThan(limit, accountId, runningSince)) return false;
+    this.put(accountId, sandbox);
     return true;
   }
 
   async deleteIdleSince(lastActiveMs: number): Promise<void> {
     for (const [accountId, sandbox] of this.sandboxes) {
-      if (sandbox.lastActiveMs <= lastActiveMs) this.sandboxes.delete(accountId);
+      if (sandbox.lastActiveMs > lastActiveMs) continue;
+      this.sandboxes.delete(accountId);
+      this.running.forget(accountId);
     }
   }
 
-  private fewerOthersRunning(accountId: string, runningSince: number, limit: number): boolean {
-    let others = 0;
-    for (const [id, { lastActiveMs }] of this.sandboxes) {
-      if (id !== accountId && lastActiveMs > runningSince) others += 1;
-    }
-    return others < limit;
+  private put(accountId: string, sandbox: T): void {
+    this.sandboxes.set(accountId, sandbox);
+    this.running.seen(accountId, sandbox.lastActiveMs);
   }
 }
