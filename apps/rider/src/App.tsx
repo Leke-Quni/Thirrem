@@ -4,9 +4,11 @@ import { GuestRoute } from './components/GuestRoute';
 import { HomeSkeleton } from './pages/HomeSkeleton';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
+import { PaymentSkeleton } from './pages/PaymentSkeleton';
 import { Signup } from './pages/Signup';
 
 const Home = lazy(() => import('./pages/Home').then((module) => ({ default: module.Home })));
+const Payment = lazy(() => import('./pages/Payment').then((module) => ({ default: module.Payment })));
 
 export function App() {
   return (
@@ -15,6 +17,7 @@ export function App() {
       <Route path="/signup" element={<GuestRoute><Signup /></GuestRoute>} />
       <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
       <Route path="/home" element={<Suspense fallback={<HomeSkeleton />}><Home /></Suspense>} />
+      <Route path="/payment" element={<Suspense fallback={<PaymentSkeleton />}><Payment /></Suspense>} />
     </Routes>
   );
 }

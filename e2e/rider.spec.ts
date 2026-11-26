@@ -1401,7 +1401,7 @@ test.describe('Rider loading shell has the same layout as the loaded page', () =
     expect(Math.round(shell.y)).toBe(Math.round(loaded.y));
     expect(Math.round(shell.height)).toBe(Math.round(loaded.height));
   };
-  const loadedSelectors = { header: '.ride-bar', toggle: '.ride-bar .icon-btn', logout: '.ride-bar .btn', planner: '.planner', map: '.map-card', email: '.ride-bar .who' };
+  const loadedSelectors = { header: '.ride-bar', toggle: '.ride-bar .icon-btn', logout: '.ride-bar .btn', planner: '.planner', map: '.map-card', email: '.ride-bar .account-button' };
   const loadedPage = async (page: import('@playwright/test').Page) => {
     await expect(page.getByRole('button', { name: /use my location/i })).toBeEnabled({ timeout: 30_000 });
     return layout(page, loadedSelectors);
@@ -1419,7 +1419,7 @@ test.describe('Rider loading shell has the same layout as the loaded page', () =
       });
       await page.goto('/home', { waitUntil: 'commit' });
       await expect(page.locator('.boot-planner')).toBeVisible();
-      const shell = await layout(page, { header: '.boot-bar', toggle: '.boot-toggle', logout: '.boot-logout', planner: '.boot-planner', map: '.boot-map', email: '.boot-who' });
+      const shell = await layout(page, { header: '.boot-bar', toggle: '.boot-toggle', logout: '.boot-logout', planner: '.boot-planner', map: '.boot-map', email: '.boot-account' });
 
       release();
       const loaded = await loadedPage(page);
@@ -1439,7 +1439,7 @@ test.describe('Rider loading shell has the same layout as the loaded page', () =
       });
       await page.goto('/home');
       await expect(page.locator('.planner-skeleton')).toBeVisible();
-      const shell = await layout(page, { header: '.ride-bar', toggle: '.ride-bar .icon-btn', logout: '.logout-skeleton', planner: '.planner-skeleton', map: '.map-card', email: '.who-skeleton' });
+      const shell = await layout(page, { header: '.ride-bar', toggle: '.ride-bar .icon-btn', logout: '.logout-skeleton', planner: '.planner-skeleton', map: '.map-card', email: '.account-skeleton' });
 
       release();
       const loaded = await loadedPage(page);

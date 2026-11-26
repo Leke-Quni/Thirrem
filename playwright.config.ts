@@ -6,13 +6,13 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 4,
   projects: [
     { name: 'api', testMatch: 'smoke.spec.ts', use: { baseURL: 'http://localhost:3100' } },
-    { name: 'rider', testMatch: 'rider.spec.ts', use: { baseURL: 'http://localhost:5173' } },
+    { name: 'rider', testMatch: ['rider.spec.ts', 'rider-payment.spec.ts'], use: { baseURL: 'http://localhost:5173' } },
   ],
   webServer: [
     {
       command: 'yarn workspace @thirrem/api build && yarn workspace @thirrem/api migrate && yarn workspace @thirrem/api start',
       url: 'http://localhost:3100/health',
-      env: { PORT: '3100', AUTH_RATE_LIMIT: '10000', OSRM_URL: 'http://127.0.0.1:1' },
+      env: { PORT: '3100', AUTH_RATE_LIMIT: '10000', OSRM_URL: 'http://127.0.0.1:1', STRIPE_SECRET_KEY: '', STRIPE_PUBLISHABLE_KEY: '' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

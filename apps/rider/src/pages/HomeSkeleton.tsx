@@ -1,18 +1,10 @@
-import { Logo } from '../components/Logo';
+import { RiderBar } from '../components/RiderBar';
 import { RouteLoader } from '../components/RouteLoader';
-import { ThemeToggle } from '../components/ThemeToggle';
 
 export function HomeSkeleton() {
   return (
     <div className="ride-page" aria-busy="true">
-      <header className="ride-bar">
-        <Logo to="/home" />
-        <div className="links">
-          <span className="who-skeleton" aria-hidden="true" />
-          <ThemeToggle />
-          <span className="logout-skeleton" aria-hidden="true" />
-        </div>
-      </header>
+      <RiderBar />
       <span className="sr-only" role="status">
         Loading your ride planner…
       </span>
