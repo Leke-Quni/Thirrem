@@ -1,13 +1,15 @@
 import { RouteLoader } from '@thirrem/ui';
 import { useRef } from 'react';
+import { DriverSandbox } from '../sandbox/DriverSandbox';
 import { useVehicle } from './useVehicle';
 import { VehicleForm } from './VehicleForm';
 import { VehicleStatus } from './VehicleStatus';
 
 export function VehiclePanel() {
   const { state, register, reload } = useVehicle();
-  const sawForm = useRef(false);
-  if (state.status === 'unregistered') sawForm.current = true;
+  // Whether the page has shown an earlier stage of the application, which the status then replaces.
+  const sawEarlier = useRef(false);
+  if (state.status === 'unregistered') sawEarlier.current = true;
 
   if (state.status === 'loading') {
     return (
@@ -16,6 +18,11 @@ export function VehiclePanel() {
       </main>
     );
   }
+
+  if (state.status === 'registered' && state.vehicle.status === 'approved') {
+    return <DriverSandbox vehicle={state.vehicle} takeFocus={sawEarlier.current} />;
+  }
+  if (state.status === 'registered') sawEarlier.current = true;
 
   return (
     <main className={`auth-card home-card${state.status === 'unregistered' ? '' : ' is-compact'}`}>
@@ -31,7 +38,7 @@ export function VehiclePanel() {
         </>
       )}
       {state.status === 'unregistered' && <VehicleForm options={state.options} onRegister={register} />}
-      {state.status === 'registered' && <VehicleStatus vehicle={state.vehicle} justRegistered={sawForm.current} />}
+      {state.status === 'registered' && <VehicleStatus vehicle={state.vehicle} takeFocus={sawEarlier.current} />}
     </main>
   );
 }

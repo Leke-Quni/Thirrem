@@ -266,6 +266,181 @@ test.describe('Driver vehicle registration', () => {
   }
 });
 
+test.describe('Driver Sandbox', () => {
+  const choice = { vehicleType: 'comfort', model: 'Škoda Superb', colour: 'Blue' };
+  const gjakova = { lat: 42.3803, lon: 20.4308 };
+  const london = { latitude: 51.5072, longitude: -0.1276 };
+  const car = (page: Page) => page.getByRole('img', { name: 'Your car' });
+
+  /** A new Driver with a registered vehicle, logged in on `page` but not yet on any page. */
+  async function registeredDriver(page: Page, { approved = true } = {}) {
+    const signup = await page.request.post('/driver/auth/signup', { data: { email: newEmail(), password } });
+    const { token } = await signup.json();
+    const headers = { Authorization: `Bearer ${token}` };
+    await page.request.post('/driver/vehicle', { headers, data: choice });
+    if (approved) {
+      await expect
+        .poll(async () => (await (await page.request.get('/driver/vehicle', { headers })).json()).vehicle.status, { timeout: 20_000 })
+        .toBe('approved');
+    }
+    await page.addInitScript((value) => localStorage.setItem('thirrem-driver-token', value), token);
+  }
+
+  const openedAt = (page: Page) => page.waitForRequest((r) => r.url().endsWith('/driver/sandbox') && r.method() === 'PUT').then((r) => r.postDataJSON().centre);
+
+  test.describe('with the device location shared', () => {
+    test.use({ geolocation: london, permissions: ['geolocation'] });
+
+    test('shows an approved Driver their car on a map around the device location', async ({ page }) => {
+      await registeredDriver(page);
+      const centre = openedAt(page);
+
+      await page.goto('/home');
+
+      expect(await centre).toEqual({ lat: london.latitude, lon: london.longitude });
+      await expect(page.getByRole('application', { name: /map/i })).toBeVisible();
+      await expect(car(page)).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: 'Your car is on the map' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'You are approved' })).toBeVisible();
+      await expect(page.getByText('Blue Škoda Superb')).toBeVisible();
+    });
+  });
+
+  test('starts in Gjakova when the device location is refused', async ({ page }) => {
+    await registeredDriver(page);
+    await page.addInitScript(() => {
+      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+    });
+    const centre = openedAt(page);
+
+    await page.goto('/home');
+
+    expect(await centre).toEqual(gjakova);
+    await expect(car(page)).toBeVisible();
+  });
+
+  test('gives a Driver waiting for approval no Sandbox, and opens it once they are approved', async ({ page }) => {
+    let opened = 0;
+    page.on('request', (r) => {
+      if (r.url().endsWith('/driver/sandbox')) opened += 1;
+    });
+    await registeredDriver(page, { approved: false });
+
+    await page.goto('/home');
+    await expect(page.getByRole('heading', { name: 'Waiting for approval' })).toBeVisible();
+    await expect(page.getByRole('application')).toHaveCount(0);
+    expect(opened).toBe(0);
+
+    await expect(car(page)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'You are approved' })).toBeFocused();
+  });
+
+  test('has its own loader while the car is being placed', async ({ page }) => {
+    await registeredDriver(page);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/driver/sandbox', async (route) => {
+      await gate;
+      await route.continue();
+    });
+
+    await page.goto('/home');
+    await expect(page.getByRole('status').filter({ hasText: 'Placing your car…' })).toBeVisible();
+    release();
+
+    await expect(car(page)).toBeVisible();
+  });
+
+  test('says all Sandboxes are busy, and opens one on trying again', async ({ page }) => {
+    await registeredDriver(page);
+    await page.route('**/driver/sandbox', (route) =>
+      route.fulfill({ status: 503, json: { code: 'SANDBOX_LIMIT', message: 'All Sandboxes are busy right now. Please try again in a few minutes.' } }),
+    );
+
+    await page.goto('/home');
+    await expect(page.getByRole('alert')).toContainText('All Sandboxes are busy');
+    await expect(car(page)).toHaveCount(0);
+
+    await page.unroute('**/driver/sandbox');
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    await expect(car(page)).toBeVisible();
+  });
+
+  test('offers a retry when the Sandbox cannot be opened', async ({ page }) => {
+    await registeredDriver(page);
+    await page.route('**/driver/sandbox', (route) => route.abort());
+
+    await page.goto('/home');
+    await expect(page.getByRole('alert')).toContainText(/could not reach thirrem/i);
+
+    await page.unroute('**/driver/sandbox');
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    await expect(car(page)).toBeVisible();
+  });
+
+  test('says when the Sandbox has stopped, keeping the car, and resumes it when asked', async ({ page }) => {
+    await registeredDriver(page);
+    await page.route('**/driver/sandbox', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      await route.fulfill({ json: { status: 'stopped', car: { ...gjakova, heading: 0, vehicleType: 'comfort' } } });
+    });
+
+    await page.goto('/home');
+    await expect(page.getByText('Your Sandbox stopped after 15 minutes without activity.')).toBeVisible({ timeout: 15_000 });
+    await expect(car(page)).toBeVisible();
+    await page.unroute('**/driver/sandbox');
+    const reopened = openedAt(page);
+    await page.getByRole('button', { name: 'Resume Sandbox' }).click();
+
+    await reopened;
+    await expect(page.getByRole('status').filter({ hasText: 'Your car is on the map' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resume Sandbox' })).toHaveCount(0);
+  });
+
+  test('opens a new Sandbox by itself when the running one is gone', async ({ page }) => {
+    await registeredDriver(page);
+    await page.goto('/home');
+    await expect(car(page)).toBeVisible();
+    const reopened = openedAt(page);
+    await page.route('**/driver/sandbox', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      await route.fulfill({ status: 404, json: { message: 'You have no Sandbox.' } });
+    });
+
+    await reopened;
+    await expect(car(page)).toBeVisible();
+  });
+
+  test('asks the Driver to log in again when the session has ended by the time the Sandbox is opened', async ({ page }) => {
+    await registeredDriver(page);
+    let ended = false;
+    const unauthorised = { status: 401, json: { message: 'Log in to continue' } };
+    await page.route('**/driver/sandbox', (route) => {
+      ended = true;
+      return route.fulfill(unauthorised);
+    });
+    await page.route('**/driver/me', (route) => (ended ? route.fulfill(unauthorised) : route.continue()));
+
+    await page.goto('/home');
+
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  for (const width of [320, 1280]) {
+    test(`fits a ${width} px wide window with the map`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await registeredDriver(page);
+
+      await page.goto('/home');
+      await expect(car(page)).toBeVisible();
+
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    });
+  }
+});
+
 test.describe('Driver loading shell has the same layout as the loaded page', () => {
   const sizes = [
     ['desktop', { width: 1280, height: 800 }],

@@ -5,23 +5,22 @@ import { VehiclePicture } from './VehiclePicture';
 
 const TEXT = {
   pending: { title: 'Waiting for approval', text: 'A simulated Admin is checking your application. This takes about 10\u00a0seconds.' },
-  approved: { title: 'You are approved', text: 'Your Sandbox is still being built, so there are no Ride Requests yet.' },
+  approved: { title: 'You are approved', text: 'This is your private Sandbox. It has no Ride Requests yet.' },
 };
 
-export function VehicleStatus({ vehicle, justRegistered }: { vehicle: DriverVehicle; justRegistered: boolean }) {
+const APPLICATION_STEPS = [
+  { label: 'Vehicle added', state: 'done' },
+  { label: 'Approval', state: 'now' },
+  { label: 'Sandbox', state: 'next' },
+];
+
+/** `takeFocus` when this has replaced something the Driver was looking at, such as the form. */
+export function VehicleStatus({ vehicle, takeFocus }: { vehicle: DriverVehicle; takeFocus: boolean }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  const approved = vehicle.status === 'approved';
 
-  // The button that was pressed is gone, so focus moves to what replaced the form.
   useEffect(() => {
-    if (justRegistered) heading.current?.focus();
-  }, [justRegistered]);
-
-  const steps = [
-    { label: 'Vehicle added', state: 'done' },
-    { label: approved ? 'Approved' : 'Approval', state: approved ? 'done' : 'now' },
-    { label: 'Sandbox', state: 'next' },
-  ];
+    if (takeFocus) heading.current?.focus();
+  }, [takeFocus]);
 
   return (
     <>
@@ -38,13 +37,15 @@ export function VehicleStatus({ vehicle, justRegistered }: { vehicle: DriverVehi
         </strong>
         <span>{VEHICLE_TYPE_NAMES[vehicle.vehicleType]}</span>
       </p>
-      <ol className="ride-progress vehicle-progress" aria-label="Application progress">
-        {steps.map((step) => (
-          <li key={step.label} className={step.state} aria-current={step.state === 'now' ? 'step' : undefined}>
-            {step.label}
-          </li>
-        ))}
-      </ol>
+      {vehicle.status === 'pending' && (
+        <ol className="ride-progress vehicle-progress" aria-label="Application progress">
+          {APPLICATION_STEPS.map((step) => (
+            <li key={step.label} className={step.state} aria-current={step.state === 'now' ? 'step' : undefined}>
+              {step.label}
+            </li>
+          ))}
+        </ol>
+      )}
     </>
   );
 }
