@@ -38,7 +38,9 @@ describe('carMarks', () => {
   });
 
   it.each([
-    ['matched', { status: 'driving', geometry: [], etaS: 60 }],
+    ['riding', { status: 'driving', geometry: [], etaS: 60 }],
+    ['riding', { status: 'routing' }],
+    ['riding', { status: 'unavailable' }],
     ['arrived', { status: 'arrived' }],
   ] as const)("marks the Ride's Driver as %s", (mark, progress) => {
     const marks = carMarks(null, { driver: { id: 'b' }, progress } as unknown as Ride);

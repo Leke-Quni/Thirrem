@@ -275,11 +275,14 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 /* A purple ring shows who the Ride Request is offered to, then only the matched Driver keeps one. */
 .ride-map .driver[data-mark]::before, .ride-map .driver[data-mark='offered']::after { content: ''; position: absolute; top: 50%; left: 50%; box-sizing: border-box; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; border: 2px solid var(--accent); }
 .ride-map .driver[data-mark='offered']::after { animation: offer-ping 1.6s ease-out infinite; }
-.ride-map .driver[data-mark='matched'], .ride-map .driver[data-mark='arrived'] { z-index: 1; color: var(--accent); }
-.ride-map .driver[data-mark='matched']::before, .ride-map .driver[data-mark='arrived']::before { width: 44px; height: 44px; margin: -22px 0 0 -22px; border-width: 3px; background: color-mix(in srgb, var(--accent) 22%, transparent); z-index: -1; }
+.ride-map .driver[data-mark='matched'], .ride-map .driver[data-mark='riding'], .ride-map .driver[data-mark='arrived'] { z-index: 1; color: var(--accent); }
+.ride-map .driver[data-mark='matched']::before, .ride-map .driver[data-mark='riding']::before, .ride-map .driver[data-mark='arrived']::before { width: 44px; height: 44px; margin: -22px 0 0 -22px; border-width: 3px; background: color-mix(in srgb, var(--accent) 22%, transparent); z-index: -1; }
 /* A waiting car is drawn over the pins, as it stops right on the Pickup Point, with a ring wide enough to show around it. */
 .ride-map .driver[data-mark='arrived'] { z-index: 2; }
 .ride-map .driver[data-mark='arrived']::before { width: 60px; height: 60px; margin: -30px 0 0 -30px; }
+/* A tag with a point down to the Rider's car, over the pins and other cars. */
+.ride-map .rider-tag { z-index: 3; pointer-events: none; padding: 3px 10px; border-radius: 8px; background: var(--accent-solid); color: var(--on-accent); font-family: var(--font-head); font-weight: 600; font-size: 13px; line-height: 1.4; box-shadow: 0 0 0 2px #fff, 0 6px 16px rgba(0, 0, 0, 0.45); }
+.rider-tag::after { content: ''; position: absolute; top: calc(100% + 2px); left: 50%; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: #fff; }
 @keyframes offer-ping { from { opacity: 0.8; transform: scale(1); } to { opacity: 0; transform: scale(1.8); } }
 .map-status { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 76px); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .map-status:empty { opacity: 0; pointer-events: none; }

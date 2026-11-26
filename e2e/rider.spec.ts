@@ -1634,13 +1634,57 @@ test.describe('Rider Ride Request', () => {
     const panel = page.getByRole('region', { name: 'On your Ride' });
     await expect(page.locator('.arrival')).toHaveText(/Drop-off in\s*3 min/);
     for (const text of ['Arta K.', 'TH-412-KD', '€2.02']) await expect(panel).toContainText(text);
-    await expect(marked(page, 'matched')).toHaveCount(1);
+    await expect(marked(page, 'riding')).toHaveCount(1);
     await expect(page.getByRole('button', { name: /pickup point pin/i })).toHaveAccessibleName(/stays put/);
 
     ride({ status: 'arrived' });
 
     await expect(page.locator('.arrival')).toHaveText('You have arrived at your Drop-off Point.');
     await expect(marked(page, 'arrived')).toHaveCount(1);
+  });
+
+  test("tags the Rider's own car from pickup until the Drop-off Point, and fades the Pickup Point left behind", async ({ page }) => {
+    const { connections } = await openPlanner(page, { open: 'matched' });
+    await expect.poll(() => connections.length).toBe(1);
+    const tag = page.locator('.ride-map .rider-tag');
+    const car = marked(page, 'riding');
+    const pickupPin = page.getByRole('button', { name: /pickup point pin/i });
+    const report = (progress: object, drivers = cars) =>
+      connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers, rideRequest: null, ride: rideOf(progress) } }));
+    // On its way to the Pickup Point, the car does not have the Rider in it yet.
+    await expect(marked(page, 'matched')).toHaveCount(1);
+    await expect(tag).toHaveCount(0);
+
+    report(driving(180));
+
+    await expect(tag).toHaveText('You');
+    await expect(pickupPin).toHaveCSS('opacity', '0.45');
+    /** How far the tag's middle is from the car's, across and up. */
+    const offset = async () => {
+      const [label, drawn] = [(await tag.boundingBox())!, (await car.boundingBox())!];
+      return { across: Math.abs(label.x + label.width / 2 - (drawn.x + drawn.width / 2)), up: drawn.y + drawn.height / 2 - (label.y + label.height) };
+    };
+    // Polled, as the camera moves to the route between one measurement and the next.
+    await expect.poll(async () => (await offset()).across).toBeLessThan(2);
+    await expect.poll(async () => (await offset()).up).toBeGreaterThan(15);
+
+    let before = (await tag.boundingBox())!;
+    await expect.poll(async () => {
+      const [last, now] = [before, (await tag.boundingBox())!];
+      before = now;
+      return Math.hypot(now.x - last.x, now.y - last.y);
+    }, { intervals: [300] }).toBeLessThan(0.5);
+    report(driving(120), cars.map((each) => (each.id === driver.id ? { ...each, lat: each.lat - 0.001, heading: 200 } : each)));
+
+    await expect.poll(async () => (await tag.boundingBox())!.y - before.y).toBeGreaterThan(5);
+    await expect.poll(async () => (await offset()).across).toBeLessThan(2);
+    // It stays level however the car turns.
+    expect((await tag.boundingBox())!.height).toBeCloseTo(before.height, 0);
+
+    report({ status: 'arrived' });
+
+    await expect(tag).toHaveCount(0);
+    await expect(pickupPin).toHaveCSS('opacity', '1');
   });
 
   test('lets the Rider ask again when no route to the Drop-off Point can be found', async ({ page }) => {
