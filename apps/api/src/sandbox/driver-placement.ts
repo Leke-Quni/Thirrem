@@ -1,12 +1,13 @@
-import type { Coordinate, SimulatedDriver } from '@thirrem/types';
-import { VEHICLE_TYPES } from '../vehicle-types.js';
+import type { Coordinate, SimulatedDriver, VehicleType } from '@thirrem/types';
 
-/** Densest around the centre and thinning out, with each ring split equally between the Vehicle Types. */
+/** Densest around the centre and thinning out. */
 const RINGS = [
   { fromM: 0, toM: 1_000, drivers: 20, candidates: 50, gapM: 0 },
   { fromM: 1_000, toM: 4_000, drivers: 12, candidates: 80, gapM: 500 },
   { fromM: 4_000, toM: 10_000, drivers: 8, candidates: 70, gapM: 500 },
 ];
+/** The Vehicle Types of a ring's Drivers, repeated as needed: two in five are Economy, more than any other. */
+const TYPE_MIX: VehicleType[] = ['economy', 'comfort', 'economy', 'xl', 'electric'];
 const MAX_ROAD_OFFSET_M = 250;
 const OUTER_M = 10_000;
 const TURN_FROM_M = 500;
@@ -91,6 +92,6 @@ export function chooseDrivers(centre: Coordinate, candidates: Candidate[], onRoa
       }
       picked.push(...crowded.slice(0, drivers - picked.length));
     }
-    return picked.map(({ lat, lon }, index) => ({ id: newId(), vehicleType: VEHICLE_TYPES[index % VEHICLE_TYPES.length]!, lat, lon }));
+    return picked.map(({ lat, lon }, index) => ({ id: newId(), vehicleType: TYPE_MIX[index % TYPE_MIX.length]!, lat, lon }));
   });
 }
