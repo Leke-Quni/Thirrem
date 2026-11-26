@@ -42,7 +42,7 @@ describe('The matched Driver approaching the Pickup Point', () => {
       routing,
       pacer,
       areas: new FixedAreaRepository({ centre: pickup, stations: [station], paths: [] }),
-      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS }, boardingMs: BOARDING_MS } },
+      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS }, boardingMs: BOARDING_MS, stopMs: 5_000 } },
     });
     apps.push(app);
     const server = app.getHttpServer();

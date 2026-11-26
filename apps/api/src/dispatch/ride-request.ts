@@ -22,6 +22,8 @@ export interface StoredRideRequest extends RideRequestInput {
   boardingMs: number;
   /** The road from the Pickup Point to the Drop-off Point. Absent until it is looked for. */
   rideRoute?: DriveRoute;
+  /** Set once the Rider has asked the Driver to end the Ride early. */
+  endRequested?: boolean;
   /** Kept once a Sandbox has stopped after the pickup. Until then it follows from the approach. */
   pickedUpAtMs?: number;
 }
@@ -37,6 +39,8 @@ export interface Dispatch {
   acceptWindowMs: number;
   acceptAfterMs: { min: number; max: number };
   boardingMs: number;
+  /** How long a Driver asked to end a Ride early drives on before stopping. */
+  stopMs: number;
 }
 
 /**

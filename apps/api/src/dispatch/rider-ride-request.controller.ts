@@ -47,6 +47,14 @@ export class RiderRideRequestController {
     await this.rideRequests.retryRoute(account.id);
   }
 
+  @Post('rides/end')
+  @UseGuards(RideRequestRateLimitGuard)
+  @HttpCode(204)
+  async endRide(@Headers('authorization') authorization: string | undefined): Promise<void> {
+    const account = await this.auth.authenticate('rider', bearerToken(authorization));
+    await this.rideRequests.endRide(account.id);
+  }
+
   @Post('rides/route')
   @UseGuards(RideRequestRateLimitGuard)
   @HttpCode(204)

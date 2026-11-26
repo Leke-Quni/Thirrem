@@ -44,7 +44,7 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
       routing,
       pacer: new InstantPacer(),
       areas: new FixedAreaRepository({ centre: pickup, stations: [station], paths: [] }),
-      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS }, boardingMs: BOARDING_MS } },
+      config: { dispatch: { acceptWindowMs: WINDOW_MS, acceptAfterMs: { min: ACCEPT_AFTER_MS, max: ACCEPT_AFTER_MS }, boardingMs: BOARDING_MS, stopMs: 5_000 } },
     });
     apps.push(app);
     const server = app.getHttpServer();
@@ -100,6 +100,7 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
         dropoff,
         driver: before.driver,
         progress: { status: 'driving', geometry: [[pickup.lon, expect.closeTo(pickup.lat, 6)], [dropoff.lon, dropoff.lat]], etaS: 200 },
+        endRequested: false,
         finalFare: null,
       });
       expect(sandbox.driver.available).toBe(false);

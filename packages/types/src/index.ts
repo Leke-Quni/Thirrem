@@ -134,7 +134,9 @@ export interface Ride {
   driver: MatchedDriver;
   /** The drive to the Drop-off Point. */
   progress: DriveProgress;
-  /** What the Rider pays, set once the Ride has completed at the Drop-off Point. */
+  /** Whether the Rider has asked the Driver to end the Ride early. */
+  endRequested: boolean;
+  /** What the Rider pays, set once the Ride has completed. */
   finalFare: Fare | null;
 }
 
