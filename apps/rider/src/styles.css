@@ -384,7 +384,12 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .request-summary dt { flex: none; font-size: 13px; color: var(--muted); }
 .request-summary dd { margin: 0; min-width: 0; font-size: 14px; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .request-reset { margin-top: auto; display: grid; gap: 10px; }
-.request-reset p { margin: 0; font-size: 14px; line-height: 1.5; }
+/* The two sit together at the foot of the panel, so only the first is pushed down. */
+.end-ride + .request-reset { margin-top: 0; }
+.end-ride { margin-top: auto; display: grid; gap: 10px; }
+.end-ride .btn[aria-disabled='true'] { cursor: progress; transform: none; filter: none; }
+.end-ride .btn .spinner { border-color: var(--border); border-top-color: var(--accent); }
+.request-reset p, .end-ride p { margin: 0; font-size: 14px; line-height: 1.5; }
 .reset-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .reset-actions .btn { flex: 1 1 150px; padding-inline: 14px; white-space: nowrap; }
 .reset-actions .btn[aria-disabled='true'] { cursor: progress; transform: none; filter: none; }

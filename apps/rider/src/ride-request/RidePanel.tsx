@@ -1,9 +1,10 @@
 import type { Ride } from '@thirrem/types';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatFare } from '../map/format';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
 import { ArrivalStatus } from './ArrivalStatus';
+import { EndRide } from './EndRide';
 import { NewSandbox } from './NewSandbox';
 import { DriverCard, RideSummary } from './ride-details';
 
@@ -22,7 +23,11 @@ interface RidePanelProps {
 }
 
 export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onRouting, focusTitle }: RidePanelProps) {
-  const { finalFare } = ride;
+  const { finalFare, endRequested, progress } = ride;
+  // Known here as soon as the API takes the request, ahead of the live feed saying so.
+  const [asked, setAsked] = useState(false);
+  const stopping = !finalFare && (endRequested || asked);
+  const endedEarly = Boolean(finalFare) && endRequested;
   const title = useRef<HTMLHeadingElement>(null);
 
   // Pickup replaces the panel the Rider may have been in, and completing removes its buttons. Focus elsewhere, such as on the map, is left alone.
@@ -37,15 +42,26 @@ export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onR
       <h1 id="ride-title" ref={title} tabIndex={-1}>
         {finalFare ? 'Ride complete' : 'On your Ride'}
       </h1>
-      <ArrivalStatus
-        progress={ride.progress}
-        to="dropoff"
-        onRouting={() => {
-          // The button pressed is about to go, so focus is moved somewhere that stays.
-          title.current?.focus({ preventScroll: true });
-          onRouting();
-        }}
-      />
+      {/* Always here, so that a screen reader hears that the Driver has been asked. */}
+      <div role="status" className={stopping ? 'searching' : 'sr-only'}>
+        {stopping && (
+          <>
+            <span className="spinner small" aria-hidden="true" />
+            <span>Waiting for your Driver to stop…</span>
+          </>
+        )}
+      </div>
+      {!stopping && !endedEarly && (
+        <ArrivalStatus
+          progress={ride.progress}
+          to="dropoff"
+          onRouting={() => {
+            // The button pressed is about to go, so focus is moved somewhere that stays.
+            title.current?.focus({ preventScroll: true });
+            onRouting();
+          }}
+        />
+      )}
       {/* Always here, so that a screen reader hears the final Fare as it arrives. */}
       <div role="status" className={finalFare ? 'final-fare' : 'sr-only'}>
         {finalFare && (
@@ -55,7 +71,11 @@ export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onR
         )}
       </div>
       <DriverCard driver={ride.driver} />
-      <p className="request-note">{finalFare ? 'A simulated Ride. No money was charged.' : 'A simulated Driver. Your Ride ends at your Drop-off Point.'}</p>
+      <p className="request-note">
+        {finalFare
+          ? `${endedEarly ? 'Your Ride ended early, where your Driver stopped. ' : ''}A simulated Ride. No money was charged.`
+          : `A simulated Driver. ${stopping ? 'Your Ride ends where your Driver stops.' : 'Your Ride ends at your Drop-off Point.'}`}
+      </p>
       <RideSummary pickup={pickup} dropoff={dropoff} vehicleType={ride.vehicleType} fare={finalFare ? undefined : fare} />
       {finalFare ? (
         <div className="request-reset">
@@ -64,7 +84,18 @@ export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onR
           </button>
         </div>
       ) : (
-        <NewSandbox drops="your Ride" onStartNew={onStartNew} />
+        <>
+          {!stopping && progress.status === 'driving' && (
+            <EndRide
+              onAsked={() => {
+                // The button pressed is about to go, so focus is moved somewhere that stays.
+                title.current?.focus({ preventScroll: true });
+                setAsked(true);
+              }}
+            />
+          )}
+          <NewSandbox drops="your Ride" onStartNew={onStartNew} />
+        </>
       )}
     </section>
   );

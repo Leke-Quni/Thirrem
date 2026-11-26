@@ -1628,7 +1628,7 @@ test.describe('Rider Ride Request', () => {
     await expect(again).toBeEnabled();
   });
 
-  const rideOf = (progress: object, finalFare: object | null = null) => ({ id: 'request-1', vehicleType: 'economy', ...defaultEnds, driver, progress, finalFare });
+  const rideOf = (progress: object, finalFare: object | null = null) => ({ id: 'request-1', vehicleType: 'economy', ...defaultEnds, driver, progress, endRequested: false, finalFare });
 
   test('follows the Ride from pickup to the Drop-off Point', async ({ page }) => {
     const { connections } = await openPlanner(page, { open: 'matched' });
@@ -1811,6 +1811,102 @@ test.describe('Rider Ride Request', () => {
       }
     });
   }
+
+  /** A page on a Ride, with what the live feed then says of it left to the test. */
+  async function openRide(page: Page, ride: object = rideOf(driving(180))) {
+    const opened = await openPlanner(page);
+    const asked: string[] = [];
+    await page.route('**/rider/rides/end', (r) => {
+      asked.push(r.request().method());
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await page.route('**/rider/sandbox', (r) => r.fulfill({ json: { drivers: cars, rideRequest: null, ride } }));
+    await expect.poll(() => opened.connections.length).toBe(1);
+    await page.reload();
+    await expect(page.getByRole('region', { name: /Ride/ })).toBeVisible();
+    await expect.poll(() => opened.connections.length).toBe(2);
+    const send = (next: object) => opened.connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: next } }));
+    return { asked, send };
+  }
+  const endButton = (page: Page) => page.getByRole('button', { name: 'End Ride early' });
+  const waiting = (page: Page) => page.getByRole('status').filter({ hasText: 'Waiting for your Driver to stop…' });
+
+  test('asks the Driver to end the Ride early only once the Rider has confirmed', async ({ page }) => {
+    const { asked } = await openRide(page);
+
+    await endButton(page).click();
+
+    const confirm = page.getByRole('group', { name: /Ask your Driver to stop\?/ });
+    await expect(confirm).toContainText('You’ll pay for the distance travelled until you stop.');
+    await expect(confirm.getByRole('button', { name: 'Keep riding' })).toBeFocused();
+    expect(asked).toEqual([]);
+
+    await confirm.getByRole('button', { name: 'Ask to stop' }).click();
+
+    await expect(waiting(page)).toBeVisible();
+    await expect(endButton(page)).toHaveCount(0);
+    await expect(page.locator('.arrival')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'On your Ride' })).toBeFocused();
+    expect(asked).toEqual(['POST']);
+  });
+
+  for (const [way, keep] of [
+    ['the button', (page: Page) => page.getByRole('button', { name: 'Keep riding' }).click()],
+    ['Escape', (page: Page) => page.keyboard.press('Escape')],
+  ] as const) {
+    test(`carries on with the Ride when the Rider keeps riding with ${way}`, async ({ page }) => {
+      const { asked } = await openRide(page);
+      await endButton(page).click();
+      await expect(page.getByRole('button', { name: 'Keep riding' })).toBeFocused();
+
+      await keep(page);
+
+      await expect(endButton(page)).toBeFocused();
+      expect(asked).toEqual([]);
+    });
+  }
+
+  test('says why the Driver could not be asked to stop, and lets the Rider try again', async ({ page }) => {
+    await openRide(page);
+    await page.route('**/rider/rides/end', (r) => r.fulfill({ status: 409, json: { message: 'You are not on a Ride.' } }));
+    await endButton(page).click();
+
+    await page.getByRole('button', { name: 'Ask to stop' }).click();
+
+    await expect(page.getByRole('alert')).toContainText('You are not on a Ride.');
+    await expect(page.getByRole('button', { name: 'Ask to stop' })).toBeEnabled();
+    await expect(waiting(page)).toHaveCount(0);
+  });
+
+  test('still says it is waiting for the Driver to stop after a reload', async ({ page }) => {
+    await openRide(page, { ...rideOf(driving(180)), endRequested: true });
+
+    await expect(waiting(page)).toBeVisible();
+    await expect(endButton(page)).toHaveCount(0);
+  });
+
+  test('offers no early end while there is no route being driven', async ({ page }) => {
+    await openRide(page, rideOf({ status: 'unavailable' }));
+
+    await expect(page.getByRole('button', { name: 'Start a new Sandbox' })).toBeVisible();
+    await expect(endButton(page)).toHaveCount(0);
+  });
+
+  test('shows the final Fare once the Driver has stopped, then starts over for another Ride Request', async ({ page }) => {
+    const { send } = await openRide(page, { ...rideOf(driving(180)), endRequested: true });
+
+    send({ ...rideOf({ status: 'arrived' }), endRequested: true, finalFare: { amountCents: 148, currency: 'EUR' } });
+
+    const panel = page.getByRole('region', { name: 'Ride complete' });
+    await expect(panel.getByRole('status').filter({ hasText: 'Final Fare' })).toContainText('€1.48');
+    await expect(panel).toContainText('Your Ride ended early, where your Driver stopped.');
+    await expect(panel).not.toContainText('You have arrived at your Drop-off Point.');
+    await expect(waiting(page)).toHaveCount(0);
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+
+    await expect(page.getByRole('button', { name: /^Request / })).toBeVisible();
+  });
 
   test('keeps the pins where they are while the Ride Request is open', async ({ page }) => {
     await openPlanner(page);
