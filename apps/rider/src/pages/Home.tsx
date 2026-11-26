@@ -115,6 +115,14 @@ export function Home() {
     setDismissed(id);
   };
 
+  /** The next journey starts from where the Rider really is, with nothing left of the last one. */
+  const requestAnotherRide = (id: string) => {
+    backToPlanner(id);
+    dispatch({ type: 'remove', slot: 'dropoff' });
+    dispatch({ type: 'remove', slot: 'pickup' });
+    void findMe(true);
+  };
+
   if (loading) return <HomeSkeleton />;
   if (unreachable) return <SessionUnavailable onRetry={retrySession} />;
   if (!email) return loggingOut.current ? null : <Navigate to={expired ? '/login' : '/'} replace />;
@@ -141,7 +149,7 @@ export function Home() {
       </header>
       <main className="ride-layout">
         {ride ? (
-          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => backToPlanner(ride.id)} />
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} />
         ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}

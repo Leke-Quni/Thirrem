@@ -1476,10 +1476,16 @@ test.describe('Rider Ride Request', () => {
   const defaultEnds = { pickup: { lat: 42.3803, lon: 20.4308 }, dropoff: { lat: 42.3712, lon: 20.4219 } };
 
   /** The planner of a signed in Rider whose Sandbox, routes, Fares and live feed the test answers for. */
-  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null, cancellation = undefined as typeof free | undefined, pausedForS = null as number | null, warningAtMs = null as number | null } = {}) {
-    await page.addInitScript(() => {
-      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
-    });
+  async function openPlanner(page: Page, { open = null as 'searching' | 'matched' | 'failed' | null, cancellation = undefined as typeof free | undefined, pausedForS = null as number | null, warningAtMs = null as number | null, location = null as typeof gjakova | null } = {}) {
+    await page.addInitScript((at) => {
+      navigator.geolocation.getCurrentPosition = (ok, fail) => {
+        // As a browser does, it answers later and not at once.
+        setTimeout(() => {
+          if (at) ok({ coords: { latitude: at.lat, longitude: at.lon, accuracy: 10 } } as GeolocationPosition);
+          else fail?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+        });
+      };
+    }, location);
     const sandbox = {
       asked: [] as Array<{ vehicleType: string; pickup: object; dropoff: object }>,
       fresh: 0,
@@ -1706,8 +1712,8 @@ test.describe('Rider Ride Request', () => {
   });
 
   /** A Rider on a Ride, which `complete` has the live feed report complete. */
-  async function onRide(page: Page) {
-    const planner = await openPlanner(page, { open: 'matched' });
+  async function onRide(page: Page, options: { location?: typeof gjakova } = {}) {
+    const planner = await openPlanner(page, { ...options, open: 'matched' });
     await expect.poll(() => planner.connections.length).toBe(1);
     const report = (progress: object, finalFare: object | null = null) =>
       planner.connections.at(-1)!.send(JSON.stringify({ event: 'drivers', data: { drivers: cars, rideRequest: null, ride: { ...rideOf(progress, finalFare), id: 'request' } } }));
@@ -1738,25 +1744,45 @@ test.describe('Rider Ride Request', () => {
     await expect(page.getByRole('heading', { name: 'Ride complete' })).toBeFocused();
   });
 
-  test('lets the Rider make another Ride Request after a completed Ride', async ({ page }) => {
-    const { sandbox, panel, complete } = await onRide(page);
+  const pin = (page: Page, name: 'Pickup' | 'Drop-off') => page.getByRole('button', { name: new RegExp(`${name} Point pin`) });
+
+  test('lets the Rider make another Ride Request after a completed Ride, from where they are', async ({ page }) => {
+    const { sandbox, panel, complete } = await onRide(page, { location: gjakova });
     complete();
 
     await panel.getByRole('button', { name: 'Request another Ride' }).click();
     // The API goes on sending the completed Ride until another Ride Request is made.
     complete();
 
-    await expect(ask(page)).toBeEnabled();
-    await expect(page.getByRole('heading', { name: 'Ride complete' })).toHaveCount(0);
     await expect(page.locator('.planner h1')).toBeFocused();
-    await expect(page.getByRole('button', { name: /pickup point pin/i })).not.toHaveAccessibleName(/stays put/);
+    await expect(page.getByRole('heading', { name: 'Ride complete' })).toHaveCount(0);
     await expect(marked(page, 'arrived')).toHaveCount(0);
+    // The last Ride's Drop-off Point and its route are gone, and the Pickup Point is where the Rider is.
+    await expect(page.getByRole('button', { name: /^Pickup Point/ }).first()).toContainText('Your location');
+    await expect(pin(page, 'Pickup')).toHaveAccessibleName(/Drag it/);
+    await expect(pin(page, 'Drop-off')).toHaveCount(0);
+    await expect(page.locator('.route-hint')).toBeVisible();
+    await expect(ask(page)).toBeDisabled();
     expect(sandbox.fresh).toBe(0);
 
+    const box = (await page.getByRole('application', { name: /map/i }).boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.6);
     await ask(page).click();
 
     await expect(page.getByRole('heading', { name: 'Finding your Driver' })).toBeVisible();
     expect(sandbox.asked).toHaveLength(1);
+    expect(sandbox.asked[0]!.pickup).toEqual(gjakova);
+  });
+
+  test('clears both pins for another Ride Request while location is blocked, saying why', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    complete();
+
+    await panel.getByRole('button', { name: 'Request another Ride' }).click();
+
+    await expect(pin(page, 'Pickup')).toHaveCount(0);
+    await expect(pin(page, 'Drop-off')).toHaveCount(0);
+    await expect(page.locator('.locate-note')).not.toContainText('It is not saved');
   });
 
   test('shows a completed Ride again after a reload', async ({ page }) => {
