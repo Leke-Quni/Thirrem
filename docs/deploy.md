@@ -5,7 +5,7 @@ The Rider and Driver apps run on Vercel Hobby, one project each. The backend (AP
 ## 1. Backend on the laptop
 
 1. Install Docker Desktop and Tailscale. Sign in to Tailscale and, in the admin console, enable HTTPS certificates and allow Funnel for this machine (Access controls, `funnel` node attribute).
-2. `cp .env.example .env`, then set `POSTGRES_PASSWORD` and `CORS_ORIGINS` (the Vercel origins; `*` matches one subdomain label so preview deploys work).
+2. `cp .env.example .env`, then set `POSTGRES_PASSWORD` and `CORS_ORIGINS` (the Vercel origins; `*` matches one subdomain label so preview deploys work). For card payments, also set the two Stripe test mode keys.
 3. `yarn demo:up`. It builds and starts the API and PostgreSQL (`restart: always`), runs migrations before the API starts, turns on `tailscale funnel` for port 5001 and keeps the Mac awake with `caffeinate`.
 4. The command prints the public URL (`https://<machine>.<tailnet>.ts.net`). Check `<url>/health` from a phone off your Wi-Fi.
 5. `yarn demo:down` stops all three.
@@ -53,6 +53,14 @@ For each project:
 
 `API_BASE_URL` is read at build time. Locally it stays empty and each app's Vite dev proxy forwards its own routes (`/rider` or `/driver`) and `/health` to the API on port 5001.
 
+## 3. Card payments and wallets
+
+Stripe runs in test mode only, and the API refuses live keys.
+
+1. In the Stripe Dashboard, in a sandbox, copy both keys from **Developers → API keys** into `.env` as `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY`, then `yarn demo:up` again. `yarn dev` reads the same `.env`.
+2. Apple Pay and Google Pay appear in the card form only on a registered HTTPS domain. In the same sandbox, open **Settings → Payments → Payment method domains** and add the Rider app's host (for example `thirrem-rider.vercel.app`). Each preview or other host has to be added on its own.
+3. A wallet is offered only on a device and browser that support it and have a card in the wallet. Everyone else can still type a card in or use the test card.
+
 ## Configuration reference
 
 | Variable | Where | Notes |
@@ -67,6 +75,8 @@ For each project:
 | `ROUTE_RATE_LIMIT` | API | Route requests per client per minute. Default 30. |
 | `DRIVER_APPROVAL_MS` | API | How long after a vehicle is registered the simulated Admin approves it. Default 10000. |
 | `TRUST_PROXY` | API | `true` behind Funnel so rate limiting sees the real client IP. |
+| `STRIPE_SECRET_KEY` | API | Stripe test mode secret (or restricted) key. Empty turns card payments off. |
+| `STRIPE_PUBLISHABLE_KEY` | API | Stripe test mode publishable key, which the API hands to the Rider app. |
 | `POSTGRES_PASSWORD` | Compose | Required, no default. |
 | `API_BASE_URL` | Vercel build | Public API URL. |
 

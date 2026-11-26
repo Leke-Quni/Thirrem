@@ -1,22 +1,37 @@
 import type { Coordinate, RideRequest, VehicleType } from '@thirrem/types';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { pinName } from '../map/pin-text';
+import { fetchStreet } from '../map/street-api';
+import { useHeldSend } from '../payment/useHeldSend';
 import { requestRide } from './ride-request-api';
 
-/** Asking for a Ride. The error is cleared once the Rider changes what they would be asking for. */
-export function useRequestRide(pickup: Coordinate | null, dropoff: Coordinate | null, vehicleType: VehicleType, onRequested: (rideRequest: RideRequest) => void) {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/** A Ride is not kept waiting long for a street name. */
+const NAME_WITHIN_MS = 3_000;
 
-  useEffect(() => setError(null), [pickup, dropoff, vehicleType]);
+type Pin = Coordinate & { label?: string };
+
+async function nameOf(point: Pin) {
+  const street = point.label ? null : await fetchStreet(point, AbortSignal.timeout(NAME_WITHIN_MS)).catch(() => null);
+  return pinName(point, street);
+}
+
+/** Asking for a Ride. The error is cleared once the Rider changes what they would be asking for. */
+export function useRequestRide(pickup: Pin | null, dropoff: Pin | null, vehicleType: VehicleType, onRequested: (rideRequest: RideRequest) => void) {
+  const { pending, verifying, error, run, clearError } = useHeldSend();
+
+  useEffect(clearError, [pickup, dropoff, vehicleType]);
 
   const request = () => {
-    if (!pickup || !dropoff || pending) return;
-    setPending(true);
-    setError(null);
-    requestRide(pickup, dropoff, vehicleType)
-      .then(onRequested)
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : 'Your Ride could not be requested. Please try again.'))
-      .finally(() => setPending(false));
+    if (!pickup || !dropoff) return;
+    let names: Promise<[string | undefined, string | undefined]> | undefined;
+    run(
+      async (holdId) => {
+        const [pickupName, dropoffName] = await (names ??= Promise.all([nameOf(pickup), nameOf(dropoff)]));
+        return requestRide(pickup, dropoff, vehicleType, { pickupName, dropoffName }, holdId);
+      },
+      onRequested,
+      'Your Ride could not be requested. Please try again.',
+    );
   };
-  return { pending, error, request };
+  return { pending, verifying, error, request };
 }

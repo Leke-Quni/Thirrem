@@ -4,6 +4,8 @@ import { formatCountdown } from '../map/format';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
 import { VEHICLE_TYPE_NAMES } from '../map/VehicleTypeList';
+import type { RequestFailure } from '../payment/payment-refusal';
+import { RequestError } from '../payment/RequestError';
 import { ArrivalStatus } from './ArrivalStatus';
 import { cancelQuestion, LOCK_TEXT } from './cancel-text';
 import { HoldButton } from './HoldButton';
@@ -21,7 +23,7 @@ interface RideRequestPanelProps {
   /** The API is looking for the matched Driver's route again. */
   onRouting(): void;
   /** For a failed Ride Request: asking for it again, or going back to the planner to change it. */
-  retry: { ready: boolean; pending: boolean; error: string | null; onRetry(): void };
+  retry: { ready: boolean; pending: boolean; verifying: boolean; error: RequestFailure | null; onRetry(): void };
   onChange(): void;
   /** Set when the Rider has just asked for the Ride, with a button that has now gone. */
   focusTitle: boolean;
@@ -110,17 +112,13 @@ export function RideRequestPanel({ rideRequest, pickup, dropoff, fare, onStartNe
           <div className="reset-actions">
             <button type="button" className="btn primary" disabled={!retry.ready} aria-disabled={retry.pending} onClick={retry.onRetry}>
               {retry.pending && <span className="spinner small" aria-hidden="true" />}
-              {retry.pending ? 'Requesting…' : 'Try again'}
+              {retry.verifying ? 'Checking with your bank…' : retry.pending ? 'Requesting…' : 'Try again'}
             </button>
             <button type="button" className="btn ghost" onClick={onChange}>
               Change your Ride
             </button>
           </div>
-          {retry.error && (
-            <div className="form-error" role="alert">
-              <span>{retry.error}</span>
-            </div>
-          )}
+          <RequestError failure={retry.error} />
         </div>
       ) : confirming === 'cancel' && cancellation ? (
         <div className="request-reset cancel-confirm" role="group" aria-labelledby="cancel-question" onKeyDown={closeOnEscape}>

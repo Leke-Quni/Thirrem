@@ -2,11 +2,11 @@ import type { Coordinate, PlaceResult, SimulatedDriver, VehicleType } from '@thi
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { Logo } from '../components/Logo';
+import { RiderBar } from '../components/RiderBar';
 import { RouteLoader } from '../components/RouteLoader';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { PlannerPanel } from '../map/PlannerPanel';
 import { RideMap } from '../map/RideMap';
+import { useUnpaidFares } from '../payment/useUnpaidFares';
 import { drivingRoute } from '../map/approach-route';
 import { carMarks } from '../map/car-marks';
 import { locate } from '../map/locate';
@@ -51,10 +51,13 @@ export function Home() {
   const warning = useCancelWarning(sandbox.status === 'ready' ? sandbox.cancelWarningAtMs : undefined, Boolean(pausedForS));
   const sandboxLive = sandbox.status === 'ready' && sandbox.connection === 'live';
   const askedHere = useRef(false);
-  const { pending, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
+  const { pending, verifying, error: requestError, request } = useRequestRide(plan.pickup, plan.dropoff, vehicleType, (made) => {
     askedHere.current = true;
     requested(made);
   });
+  // A Fare falls due as a Ride completes, and a refused Ride Request says there is one.
+  const completedRide = sandbox.status === 'ready' && sandbox.ride?.finalFare ? sandbox.ride.id : '';
+  const { fares: unpaidFares } = useUnpaidFares(Boolean(email), `${completedRide} ${requestError?.payment ?? ''}`);
   const marks = useMemo(() => carMarks(rideRequest, ride), [rideRequest, ride]);
   const driving = useMemo(() => drivingRoute(rideRequest, ride), [rideRequest, ride]);
   const droppedRequest = useRef(false);
@@ -129,27 +132,16 @@ export function Home() {
 
   return (
     <div className="ride-page">
-      <header className="ride-bar">
-        <Logo to="/home" />
-        <div className="links">
-          <span className="who">{email}</span>
-          <ThemeToggle />
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => {
-              loggingOut.current = true;
-              logout();
-              navigate('/');
-            }}
-          >
-            Log out
-          </button>
-        </div>
-      </header>
+      <RiderBar
+        onLogOut={() => {
+          loggingOut.current = true;
+          logout();
+          navigate('/');
+        }}
+      />
       <main className="ride-layout">
         {ride ? (
-          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} />
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} unpaidFares={unpaidFares} />
         ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}
@@ -164,7 +156,7 @@ export function Home() {
               cancelled(paused);
             }}
             onStartNew={startNewRide}
-            retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
+            retry={{ ready: sandboxLive, pending, verifying, error: requestError, onRetry: request }}
             onChange={() => backToPlanner(rideRequest.id)}
           />
         ) : (
@@ -187,7 +179,8 @@ export function Home() {
               retryFare();
             }}
             focusTitle={droppedRequest.current}
-            request={{ ready: sandboxLive, pending, error: requestError, pausedForS, onRequest: request }}
+            unpaidFares={unpaidFares}
+            request={{ ready: sandboxLive, pending, verifying, error: requestError, pausedForS, onRequest: request }}
           />
         )}
         <div className="map-card">

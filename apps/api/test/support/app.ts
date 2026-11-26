@@ -8,11 +8,13 @@ import { RATE_LIMIT, ROUTE_RATE_LIMIT, SEARCH_RATE_LIMIT, type RateLimitOptions 
 import { AppModule } from '../../src/app.module.js';
 import { SimulationClock } from '../../src/simulation-clock/simulation-clock.js';
 import { ROAD_GRAPH, type RoadGraph } from '../../src/road-graph/road-graph.js';
+import { PaymentService } from '../../src/payments/payment.service.js';
 import { PlaceSearchService } from '../../src/places/place-search.service.js';
 import { RoutingService } from '../../src/routing/routing.service.js';
 import { AreaRepository } from '../../src/sandbox/area.repository.js';
 import { Pacer } from '../../src/sandbox/pacer.js';
 import { RoadService } from '../../src/sandbox/road-service.js';
+import { UnavailablePaymentService } from '../../src/payments/unavailable-payment.service.js';
 import { FakeRoadService } from './fake-road-service.js';
 import { StraightRoutingService } from './fake-routing.js';
 import { ManualPacer } from './pacers.js';
@@ -29,8 +31,9 @@ export class ManualClock extends SimulationClock {
   }
 }
 
-export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; routing?: RoutingService; places?: PlaceSearchService; roads?: RoadService; areas?: AreaRepository; pacer?: Pacer; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions; routeRateLimit?: RateLimitOptions; searchRateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
-  const config = { ...loadConfig(), ...options.config };
+export async function createTestApp(options: { clock?: ManualClock; roadGraph?: RoadGraph; routing?: RoutingService; places?: PlaceSearchService; roads?: RoadService; areas?: AreaRepository; pacer?: Pacer; payments?: PaymentService; config?: Partial<AppConfig>; rateLimit?: RateLimitOptions; routeRateLimit?: RateLimitOptions; searchRateLimit?: RateLimitOptions } = {}): Promise<INestApplication> {
+  // Settling looks across every account, so only a test with a database of its own turns it on.
+  const config = { ...loadConfig(), settleMs: 3_600_000, ...options.config };
   let builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_CONFIG)
     .useValue(config)
@@ -40,6 +43,9 @@ export async function createTestApp(options: { clock?: ManualClock; roadGraph?: 
     .useValue(options.routeRateLimit ?? { limit: 10_000, windowMs: 60_000 })
     .overrideProvider(SEARCH_RATE_LIMIT)
     .useValue(options.searchRateLimit ?? { limit: 10_000, windowMs: 60_000 })
+    // Never Stripe, whatever keys the environment holds. Rides are free unless the test hands over a payment service.
+    .overrideProvider(PaymentService)
+    .useValue(options.payments ?? new UnavailablePaymentService())
     // Never the public routing server, and no new path unless the test hands over a pacer.
     .overrideProvider(RoadService)
     .useValue(options.roads ?? new FakeRoadService())

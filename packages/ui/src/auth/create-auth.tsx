@@ -15,8 +15,11 @@ export interface AuthState {
   logout(): void;
 }
 
-/** One app's accounts: its own API routes and its own stored session. */
-export function createAuth(app: AppName, apiBaseUrl: string) {
+/**
+ * One app's accounts: its own API routes and its own stored session.
+ * `onSessionChange` is called as a session starts or ends, so the app can drop what it kept for the last one.
+ */
+export function createAuth(app: AppName, apiBaseUrl: string, onSessionChange: () => void = () => undefined) {
   const TOKEN_KEY = `thirrem-${app}-token`;
   const authApi = createAuthApi(app, apiBaseUrl);
   const AuthContext = createContext<AuthState | null>(null);
@@ -44,6 +47,7 @@ export function createAuth(app: AppName, apiBaseUrl: string) {
           if (!current) return;
           if (shouldEndSession(error)) {
             localStorage.removeItem(TOKEN_KEY);
+            onSessionChange();
             setEmail(null);
             setExpired(true);
           } else setUnreachable(true);
@@ -60,6 +64,7 @@ export function createAuth(app: AppName, apiBaseUrl: string) {
 
     const open = useCallback((session: { email: string; token: string }) => {
       localStorage.setItem(TOKEN_KEY, session.token);
+      onSessionChange();
       setEmail(session.email);
       setExpired(false);
     }, []);
@@ -75,6 +80,7 @@ export function createAuth(app: AppName, apiBaseUrl: string) {
         login: async (e, p) => open(await authApi.login(e, p)),
         logout: () => {
           localStorage.removeItem(TOKEN_KEY);
+          onSessionChange();
           setEmail(null);
           setExpired(false);
         },

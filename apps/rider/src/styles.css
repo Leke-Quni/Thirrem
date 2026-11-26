@@ -1,9 +1,21 @@
 /* ---- ride planner ---- */
 .ride-page { min-height: 100dvh; display: flex; flex-direction: column; }
-.ride-bar { flex: none; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; height: var(--ride-bar-h); padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); }
+.ride-bar { position: relative; z-index: 30; flex: none; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; height: var(--ride-bar-h); padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); }
 .ride-bar .links { display: flex; gap: 14px; align-items: center; }
+.account { position: relative; }
+.account-button { display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 232px; height: 40px; padding: 0 10px 0 7px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; touch-action: manipulation; transition: background-color 0.15s; }
+.account-button:hover, .account-button[aria-expanded='true'] { background: var(--raised); }
+.account-button:focus-visible, .account-panel a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.account-initial { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-solid); color: var(--on-accent); font-size: 13px; font-weight: 600; }
+.account-chevron { flex: none; margin-left: auto; color: var(--muted); transition: transform 0.15s; }
+.account-button[aria-expanded='true'] .account-chevron { transform: rotate(180deg); }
+.account-panel { position: absolute; top: calc(100% + 8px); right: 0; box-sizing: border-box; width: 264px; padding: 6px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); box-shadow: var(--shadow); }
+.account-panel p { margin: 0; padding: 10px 12px 12px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.account-panel ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.account-panel a { display: block; padding: 11px 12px; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; }
+.account-panel a:hover, .account-panel a[aria-current='page'] { background: var(--raised); }
 .ride-bar .btn { box-sizing: border-box; height: 48px; min-width: 104px; padding-block: 0; }
-.ride-bar .who { height: 22px; line-height: 22px; color: var(--muted); font-size: 14px; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ride-bar .who { min-width: 0; color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ride-layout { width: 100%; max-width: 1120px; margin: 0 auto; padding: 24px 28px 40px; display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: stretch; }
 
 .map-card { position: relative; min-height: var(--planner-min-h); border-radius: var(--radius); overflow: hidden; background: var(--map-bg); border: 1px solid var(--border); box-shadow: var(--shadow), 0 0 80px var(--glow); isolation: isolate; }
@@ -132,6 +144,12 @@
 .request-ride { margin-top: 12px; display: grid; gap: 8px; }
 .request-ride .btn { height: 44px; padding-block: 0; }
 .request-ride .btn:disabled { cursor: not-allowed; }
+.payment-problem { display: grid; gap: 8px; }
+.unpaid-notice { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius-btn); color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-border); }
+.unpaid-notice p { margin: 0; font-size: 14px; line-height: 1.5; text-wrap: pretty; }
+.payment-added { margin: 0; font-size: 14px; line-height: 1.5; }
+.payment-added:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.payment-problem .btn[aria-disabled='true'] { cursor: progress; transform: none; filter: none; }
 .request-ride .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
 .planner h1:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 .ride-request { display: flex; flex-direction: column; gap: 16px; }
@@ -215,7 +233,9 @@
   .map-card { order: -1; min-height: 0; height: var(--map-h-narrow); }
   .planner { min-height: var(--planner-min-h-narrow); padding: 18px; }
 }
-@media (max-width: 560px) { .ride-bar .who, .ride-bar .who-skeleton { display: none; } }
+@media (max-width: 560px) { .ride-bar .who, .account-chevron { display: none; } .account-button, .ride-bar .account-skeleton { width: 40px; } .account-button { justify-content: center; padding: 0; } }
+@media (max-width: 440px) { .ride-bar { padding: 0 12px; } .ride-bar .links { gap: 8px; } .ride-bar .btn, .ride-bar .logout-skeleton { min-width: 0; width: 88px; padding-inline: 0; white-space: nowrap; } .account-panel { right: -96px; width: min(264px, calc(100vw - 24px)); } }
+@media (max-width: 359px) { .ride-bar { padding: 0 8px; } .ride-bar .links { gap: 6px; } .ride-bar .btn, .ride-bar .logout-skeleton { width: 80px; font-size: 14px; } .account-panel { right: -86px; } }
 @media (prefers-reduced-motion: reduce) {
   .spinner, .route-skeleton span, .fare-pending, .arrival.is-arrived { animation: none; }
   .ride-map .driver[data-mark='offered']::after { animation: none; opacity: 0; }
@@ -232,7 +252,115 @@
 }
 .retry-session { margin-top: 16px; }
 
-.who-skeleton, .logout-skeleton { display: block; flex: none; background: linear-gradient(90deg, var(--field-bg), var(--raised), var(--field-bg)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
-.who-skeleton { width: 170px; height: 22px; border-radius: 8px; }
+.account-skeleton, .logout-skeleton { display: block; flex: none; background: linear-gradient(90deg, var(--field-bg), var(--raised), var(--field-bg)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+.account-skeleton { width: 232px; height: 40px; border-radius: 12px; }
 .logout-skeleton { box-sizing: border-box; width: 104px; height: 48px; border-radius: 12px; }
-@media (prefers-reduced-motion: reduce) { .who-skeleton, .logout-skeleton { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .account-skeleton, .logout-skeleton { animation: none; } }
+
+/* ---- payment ---- */
+.payment-layout { box-sizing: border-box; width: 100%; max-width: 1040px; margin: 0 auto; padding: 40px 20px 56px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 0 24px; align-items: start; }
+.payment-head { grid-column: 1 / -1; }
+.payment-layout h1 { font-size: 32px; margin-bottom: 8px; }
+.payment-lead { color: var(--muted); font-size: 15px; margin-bottom: 24px; }
+/* No backdrop filter: Chrome can leave Stripe’s frame half painted inside one. */
+.payment-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 24px; border-radius: 20px; background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow), 0 0 80px var(--glow); }
+.payment-panel h2 { font-size: 18px; }
+.payment-panel h2:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.methods { list-style: none; padding: 0; margin: 0; }
+.method { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+.method:last-child { border-bottom: 1px solid var(--border); }
+.method-name { margin: 0; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.method-brand { font-weight: 600; }
+.method-digits { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.method-wallet { font-size: 13px; color: var(--muted); }
+.method-default { font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: var(--accent-text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.method-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.method-actions .btn, .method-confirm .btn { padding: 9px 14px; font-size: 14px; touch-action: manipulation; }
+.method-confirm { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.method-confirm p { margin: 0 auto 0 0; font-size: 14px; font-weight: 600; }
+.methods-empty { margin: 0; padding: 20px 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); font-size: 15px; }
+.methods-skeleton { display: grid; gap: 10px; }
+.methods-skeleton .skeleton-field { height: 62px; }
+.payment-add { display: grid; gap: 10px; }
+.payment-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.payment-buttons .btn { touch-action: manipulation; }
+.payment-panel .btn[aria-disabled='true'] { cursor: progress; opacity: 0.6; transform: none; filter: none; }
+.payment-note { margin: 0; color: var(--muted); font-size: 13px; }
+.payment-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.unpaid-fares { border-color: var(--danger-border); }
+.unpaid-fare { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.unpaid-fare + .unpaid-fare { padding-top: 16px; border-top: 1px solid var(--border); }
+.unpaid-fare p { margin: 0; }
+.unpaid-amount strong { font-family: var(--font-head); font-weight: 600; font-size: 30px; line-height: 1.2; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+.unpaid-ride { color: var(--muted); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.pay-with { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; }
+.pay-with legend { padding: 0; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+.pay-with label { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 15px; cursor: pointer; touch-action: manipulation; }
+.pay-with input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent-solid); }
+.pay-with input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pay-with:disabled label { cursor: progress; }
+.unpaid-fare .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
+.fare-paid { margin: 0; font-size: 15px; font-weight: 600; }
+.fare-paid:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.test-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 24px; border-radius: 20px; border: 1px solid var(--border); }
+.test-cards h2 { font-size: 18px; }
+.test-cards ul { list-style: none; padding: 0; margin: 0; }
+.test-cards li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+.test-number { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; user-select: all; }
+.test-cards .btn { min-width: 74px; padding: 7px 12px; font-size: 13px; touch-action: manipulation; }
+.test-outcome { grid-column: 1 / -1; color: var(--muted); font-size: 13px; line-height: 1.45; }
+@media (max-width: 880px) { .payment-layout { grid-template-columns: minmax(0, 1fr); max-width: 640px; gap: 0; } .test-cards { margin-top: 24px; } }
+@media (max-width: 359px) { .test-cards { padding: 16px; } .test-number { font-size: 14px; } }
+.card-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+/* Not a grid or flex box: Stripe sizes its frame from the width of a block. */
+.card-fields { position: relative; min-height: 150px; }
+.card-fields-skeleton { position: absolute; inset: 0; }
+@media (prefers-reduced-motion: reduce) { .methods-skeleton .skeleton-field, .card-fields-skeleton { animation: none; } }
+
+/* ---- receipts ---- */
+.receipts-layout { box-sizing: border-box; width: 100%; max-width: 640px; margin: 0 auto; padding: 40px 20px 56px; }
+.receipts-layout h1 { font-size: 32px; margin-bottom: 8px; }
+.receipts-layout header > h1:last-child { margin-bottom: 24px; }
+.receipts-back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px; color: var(--accent-text); font-size: 14px; font-weight: 600; text-decoration: none; touch-action: manipulation; }
+.receipts-back:hover { text-decoration: underline; text-underline-offset: 4px; }
+.receipts-back:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.receipts { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.receipts li { content-visibility: auto; contain-intrinsic-size: auto 118px; }
+/* Inside the row, as a row left unpainted by content-visibility clips whatever falls outside it. */
+.receipts a { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 16px; padding: 16px 20px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--card); color: var(--fg); text-decoration: none; touch-action: manipulation; transition: border-color 0.15s, background-color 0.15s; }
+.receipts a:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.receipts a:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.receipts time { font-weight: 600; font-size: 15px; }
+.receipts strong { font-family: var(--font-head); font-weight: 600; font-size: 20px; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.receipts span { grid-column: 1 / -1; min-width: 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.receipts span:last-child { font-size: 13px; color: var(--muted); }
+.receipts-empty { display: grid; justify-items: start; gap: 16px; padding: 24px 20px; border: 1px dashed var(--border); border-radius: var(--radius); }
+.receipts-empty p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.receipts-empty strong { display: block; color: var(--fg); }
+.receipt { gap: 20px; }
+.receipt p { margin: 0; }
+.receipt-when { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; font-size: 15px; }
+.receipt-when time { font-weight: 600; }
+.receipt-when span { color: var(--muted); }
+/* The line joins the two marks, as the route does on the map. */
+.receipt-route { margin: 0; display: grid; gap: 18px; }
+.receipt-route div { position: relative; padding-left: 32px; }
+.receipt-route div:first-child::after { content: ''; position: absolute; left: 8px; top: 22px; bottom: -16px; width: 2px; border-radius: 1px; background: var(--accent); }
+.receipt-route dt { font-size: 13px; color: var(--muted); }
+.receipt-route .pin-glyph { position: absolute; left: 0; top: 2px; box-sizing: border-box; }
+.receipt-route dd { margin: 0; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.receipt-lines { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.receipt-lines th, .receipt-lines td { padding: 10px 0; border-top: 1px solid var(--border); vertical-align: baseline; font-size: 15px; }
+.receipt-lines th { text-align: left; font-weight: 400; padding-right: 16px; }
+.receipt-lines th span { margin-left: 6px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.receipt-lines td { text-align: right; white-space: nowrap; }
+/* The one heavy rule: everything above it adds up to what is below. */
+.receipt-lines tfoot th, .receipt-lines tfoot td { padding-top: 16px; border-top: 2px solid var(--fg); font-weight: 600; }
+.receipt-lines tfoot td { font-family: var(--font-head); font-size: 30px; line-height: 1.2; letter-spacing: -0.035em; }
+.receipt-paid { font-size: 15px; }
+.receipts-skeleton { display: grid; gap: 10px; }
+.receipts-more { margin-top: 10px; }
+.receipts-skeleton .skeleton-field { height: 114px; border-radius: var(--radius); }
+.receipt-skeleton .skeleton-block.tall { height: 220px; }
+@media (max-width: 359px) { .receipts-layout .payment-panel { padding: 16px; } .receipts a { padding: 14px; } .receipt-lines tfoot td { font-size: 24px; } }
+@media (prefers-reduced-motion: reduce) { .receipts-skeleton span, .receipt-skeleton span { animation: none; } .receipts a { transition: none; } }

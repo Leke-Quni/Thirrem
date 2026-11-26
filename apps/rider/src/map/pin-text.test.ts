@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pinText } from './pin-text';
+import { pinName, pinText } from './pin-text';
 
 const point = { lat: 42.3803, lon: 20.4308 };
 
@@ -29,5 +29,18 @@ describe('pinText', () => {
 
   it('keeps the sign of coordinates west and south of zero', () => {
     expect(pinText({ lat: -33.8688, lon: -70.6693 }, { state: 'done', name: null })).toBe('-33.86880, -70.66930');
+  });
+});
+
+describe('The name a pin is saved under', () => {
+  const point = { lat: 42.3803, lon: 20.4308 };
+
+  it('is the place chosen, or the street the pin is on', () => {
+    expect(pinName({ ...point, label: 'Sheshi Çarshia, Gjakova' }, null)).toBe('Sheshi Çarshia, Gjakova');
+    expect(pinName(point, 'School Road')).toBe('School Road');
+  });
+
+  it('is never its coordinates', () => {
+    expect(pinName(point, null)).toBeUndefined();
   });
 });

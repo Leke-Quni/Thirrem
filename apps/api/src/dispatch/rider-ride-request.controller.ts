@@ -13,6 +13,11 @@ function parseVehicleType(value: unknown): VehicleType {
   return value as VehicleType;
 }
 
+const MAX_NAME_LENGTH = 200;
+
+/** A pin on a road with no name is kept as just that, as coordinates are never saved. */
+const parseName = (value: unknown) => (typeof value === 'string' && value.trim().slice(0, MAX_NAME_LENGTH)) || 'Pin on the map';
+
 @Controller('rider')
 export class RiderRideRequestController {
   constructor(
@@ -22,13 +27,14 @@ export class RiderRideRequestController {
 
   @Post('ride-requests')
   @UseGuards(RideRequestRateLimitGuard)
-  async request(@Headers('authorization') authorization: string | undefined, @Body() body: { pickup?: unknown; dropoff?: unknown; vehicleType?: unknown } | undefined): Promise<RideRequest> {
+  async request(@Headers('authorization') authorization: string | undefined, @Body() body: { pickup?: unknown; dropoff?: unknown; vehicleType?: unknown; pickupName?: unknown; dropoffName?: unknown; holdId?: unknown } | undefined): Promise<RideRequest> {
     const account = await this.auth.authenticate('rider', bearerToken(authorization));
-    return this.rideRequests.request(account.id, {
+    const input = {
       pickup: parseCoordinate(body?.pickup, 'The Pickup Point'),
       dropoff: parseCoordinate(body?.dropoff, 'The Drop-off Point'),
       vehicleType: parseVehicleType(body?.vehicleType),
-    });
+    };
+    return this.rideRequests.request(account.id, input, { pickupName: parseName(body?.pickupName), dropoffName: parseName(body?.dropoffName) }, body?.holdId);
   }
 
   @Delete('ride-requests')
@@ -42,9 +48,9 @@ export class RiderRideRequestController {
   @Post('ride-requests/approach')
   @UseGuards(RideRequestRateLimitGuard)
   @HttpCode(204)
-  async retryRoute(@Headers('authorization') authorization: string | undefined): Promise<void> {
+  async retryRoute(@Headers('authorization') authorization: string | undefined, @Body() body: { holdId?: unknown } | undefined): Promise<void> {
     const account = await this.auth.authenticate('rider', bearerToken(authorization));
-    await this.rideRequests.retryRoute(account.id);
+    await this.rideRequests.retryRoute(account.id, body?.holdId);
   }
 
   @Post('rides/end')
@@ -58,8 +64,8 @@ export class RiderRideRequestController {
   @Post('rides/route')
   @UseGuards(RideRequestRateLimitGuard)
   @HttpCode(204)
-  async retryRideRoute(@Headers('authorization') authorization: string | undefined): Promise<void> {
+  async retryRideRoute(@Headers('authorization') authorization: string | undefined, @Body() body: { holdId?: unknown } | undefined): Promise<void> {
     const account = await this.auth.authenticate('rider', bearerToken(authorization));
-    await this.rideRequests.retryRideRoute(account.id);
+    await this.rideRequests.retryRideRoute(account.id, body?.holdId);
   }
 }

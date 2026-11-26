@@ -40,6 +40,10 @@ _Avoid_: Address, destination, dropoff address
 The amount a Rider pays for a Ride, set by the Vehicle Type and the distance and time travelled.
 _Avoid_: Price, cost, charge
 
+**Receipt**:
+The record of what a Rider paid for a Ride: its Fare broken into amounts, the total charged and the payment method. There is one for each paid Ride.
+_Avoid_: Invoice, bill
+
 **Vehicle Type**:
 A category of vehicle a Rider can choose, each with its own Fare rate. There are four: Economy, Comfort, XL and Electric.
 _Avoid_: Ride type, tier, class

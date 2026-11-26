@@ -51,6 +51,15 @@ export interface FareQuote extends Fare {
   vehicleType: VehicleType;
 }
 
+/** What a Fare is made of, in euro cents. */
+export interface FareBreakdown {
+  baseCents: number;
+  distanceCents: number;
+  timeCents: number;
+  /** What the kilometres past the long-distance threshold add. */
+  longDistanceCents: number;
+}
+
 export interface FareResponse {
   distanceM: number;
   durationS: number;
@@ -201,4 +210,73 @@ export interface DriverVehicleResponse {
 export interface VehicleOptionsResponse {
   models: Record<VehicleType, string[]>;
   colours: string[];
+}
+
+export type Wallet = 'apple_pay' | 'google_pay';
+
+export interface PaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  /** The wallet the card was saved through, if it was not typed in. */
+  wallet: Wallet | null;
+  isDefault: boolean;
+}
+
+export interface PaymentMethodsResponse {
+  /** The key Stripe's card form is shown with, or null when payments are not set up. */
+  publishableKey: string | null;
+  methods: PaymentMethod[];
+}
+
+/** The 402 answer to a Ride Request whose quoted Fare could not be held. Nobody has been asked to take it. */
+export type PaymentRefusedResponse =
+  | { code: 'PAYMENT_METHOD_REQUIRED' | 'PAYMENT_DECLINED' | 'FARE_UNPAID'; message: string }
+  /** The Rider's bank has to verify them first. The app does that with `clientSecret`, then sends the request again with `holdId`, whether or not it passed. */
+  | { code: 'PAYMENT_VERIFICATION'; message: string; holdId: string; clientSecret: string; publishableKey: string };
+
+/** A Fare that is due for a Ride and could not be charged. No Ride can be requested until it is paid. */
+export interface UnpaidFare extends Fare {
+  id: string;
+  vehicleType: VehicleType;
+  pickupName: string;
+  dropoffName: string;
+  /** When the Ride was requested. */
+  requestedAt: string;
+}
+
+export interface UnpaidFaresResponse {
+  fares: UnpaidFare[];
+}
+
+/** What a Rider paid for a Ride. `amountCents` is the total charged. */
+export interface Receipt extends Fare {
+  id: string;
+  /** That of the Ride it is for. */
+  rideId: string;
+  /** When the Ride was requested. */
+  requestedAt: string;
+  vehicleType: VehicleType;
+  pickupName: string;
+  dropoffName: string;
+  /** How far the Ride went, and how long it took. */
+  distanceM: number;
+  durationS: number;
+  breakdown: FareBreakdown;
+  /** What was taken off `breakdown` so as not to charge more than the quoted Fare: 0 or less. With it, the breakdown adds up to `amountCents`. */
+  adjustmentCents: number;
+  paymentMethod: Pick<PaymentMethod, 'brand' | 'last4' | 'wallet'>;
+}
+
+/** A page of receipts, newest Ride first. */
+export interface ReceiptsResponse {
+  receipts: Receipt[];
+  /** How many there are in all. */
+  total: number;
+  /** Sent as `?after=` for the next page, or null on the last one. */
+  next: string | null;
+}
+
+export interface CardSetupResponse {
+  clientSecret: string;
 }

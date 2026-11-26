@@ -3,8 +3,13 @@ import { ConflictException, HttpException, HttpStatus, Inject, Injectable } from
 import type { CancelWouldPauseResponse, RideRequest, RideRequestsPausedResponse } from '@thirrem/types';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
+import { calculateFare } from '../fares/fare-calculator.js';
+import type { QuotedRide } from '../payments/ride-payment.repository.js';
+import { RidePaymentService } from '../payments/ride-payment.service.js';
+import { requestedRoute } from '../routing/requested-route.js';
 import { type Coordinate, type RouteResult, RoutingService } from '../routing/routing.service.js';
 import { AreaService } from '../sandbox/area.service.js';
+import { JourneyLedger } from '../sandbox/journey-ledger.js';
 import { Pacer } from '../sandbox/pacer.js';
 import { releasedDriver } from '../sandbox/sandbox-driver.js';
 import type { Sandbox } from '../sandbox/sandbox.repository.js';
@@ -14,6 +19,7 @@ import { cancellation, pausedForS } from './cancel-limit.js';
 import { routed } from './drive.js';
 import { endRequestedRide, isCompleted, isPickedUp, matchedDriverPosition, rideProgress } from './ride.js';
 import { broadcast, cancelling, firstToAccept, isOpen, isUnderWay, matchedDriverId, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
+import { UnpaidFareService } from './unpaid-fare.service.js';
 
 /** How long to wait before each further try, when the routing server cannot be had. */
 const ROUTE_RETRY_AFTER_MS = [2_000, 5_000];
@@ -27,6 +33,12 @@ function requestsPaused(forS: number): HttpException {
     message: `Ride Requests are paused after too many cancellations. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`,
   };
   return new HttpException(body, HttpStatus.TOO_MANY_REQUESTS);
+}
+
+/** What the Rider calls the Pickup Point and the Drop-off Point, for their payment records. */
+export interface PointNames {
+  pickupName: string;
+  dropoffName: string;
 }
 
 /** The Ride Request that has become a Ride still going at `nowMs`. */
@@ -48,27 +60,69 @@ export class RideRequestService {
     private readonly pacer: Pacer,
     private readonly areas: AreaService,
     private readonly cancels: CancelHistoryRepository,
+    private readonly payments: RidePaymentService,
+    private readonly ledger: JourneyLedger,
+    private readonly unpaidFares: UnpaidFareService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async request(accountId: string, input: RideRequestInput): Promise<RideRequest> {
-    const { made, view } = await this.sandboxes.change(accountId, async (sandbox, drivers, nowMs, positionAt) => {
-      const current = sandbox.rideRequest;
-      if (current && isUnderWay(current, sandbox.resumedAtMs, nowMs)) {
-        throw new ConflictException(isPickedUp(current, sandbox.resumedAtMs, nowMs) ? 'You are already on a Ride.' : 'You already have an open Ride Request.');
-      }
-      const history = await this.cancels.findByAccount(accountId);
-      const paused = pausedForS(history, nowMs);
-      if (paused) throw requestsPaused(paused);
+  /** Holds the quoted Fare, then broadcasts the Ride Request. No Driver is searched for without the hold. */
+  async request(accountId: string, input: RideRequestInput, names: PointNames, holdId?: unknown): Promise<RideRequest> {
+    const paymentId = this.payments.required ? await this.holdFare(accountId, input, names, holdId) : null;
+    const { made, view } = await this.broadcastRequest(accountId, input, paymentId).catch(async (error: unknown) => {
+      if (paymentId) await this.payments.abandon(accountId, paymentId);
+      throw error;
+    });
+    // The route is looked for while Drivers decide, and the Rider is not kept waiting for it.
+    void this.findRoutes(accountId, made);
+    void this.ledger.settle(accountId);
+    return view;
+  }
+
+  private broadcastRequest(accountId: string, input: RideRequestInput, paymentId: string | null) {
+    return this.sandboxes.change(accountId, async (sandbox, drivers, nowMs, positionAt) => {
+      const history = await this.assertCanRequest(accountId, sandbox, nowMs);
       const rideRequest = broadcast(randomUUID(), input, drivers, this.config.dispatch, nowMs, Math.random);
       const winner = firstToAccept(rideRequest);
       const approach = winner && { from: positionAt(winner.driverId, winner.acceptsAtMs), matchedAtMs: winner.acceptsAtMs, route: null };
       const made = { ...rideRequest, approach };
+      // A completed Ride gives up its place here, so its Fare is noted first.
+      await this.ledger.record(accountId, sandbox, nowMs, true);
+      if (paymentId && !(await this.payments.attach(paymentId, made.id))) throw new ConflictException('The hold on your Fare has lapsed. Request your Ride again.');
       return { sandbox: { ...sandbox, rideRequest: made }, result: { made, view: rideRequestView(made, null, history, sandbox.resumedAtMs, nowMs) } };
     });
-    // The route is looked for while Drivers decide, and the Rider is not kept waiting for it.
-    void this.findRoutes(accountId, made);
-    return view;
+  }
+
+  /** Why the account cannot request a Ride now, if it cannot. Gives its cancel history if it can. */
+  private async assertCanRequest(accountId: string, { rideRequest: current, resumedAtMs }: Sandbox, nowMs: number) {
+    if (current && isUnderWay(current, resumedAtMs, nowMs)) {
+      throw new ConflictException(isPickedUp(current, resumedAtMs, nowMs) ? 'You are already on a Ride.' : 'You already have an open Ride Request.');
+    }
+    const history = await this.cancels.findByAccount(accountId);
+    const paused = pausedForS(history, nowMs);
+    if (paused) throw requestsPaused(paused);
+    return history;
+  }
+
+  /** Holds the quoted Fare, or takes up the hold `holdId` that the Rider's bank has been asked to verify. */
+  private async holdFare(accountId: string, input: RideRequestInput, names: PointNames, holdId: unknown): Promise<string> {
+    // Nothing is held for a Ride Request that would be refused anyway.
+    await this.sandboxes.change(accountId, async (sandbox, _drivers, nowMs) => {
+      await this.assertCanRequest(accountId, sandbox, nowMs);
+      return { sandbox, result: undefined };
+    });
+    // The last Ride's Fare may only now be falling due, and has to be paid first.
+    await this.unpaidFares.bringUpToDate(accountId);
+    await this.payments.assertPaidUp(accountId);
+    const quoted = await this.quote(input, names);
+    return holdId === undefined ? this.payments.hold(accountId, quoted) : this.payments.confirm(accountId, holdId, quoted);
+  }
+
+  /** The quoted Fare, worked out here as the Rider was shown it: for the road route between the two points. */
+  private async quote({ pickup, dropoff, vehicleType }: RideRequestInput, names: PointNames): Promise<QuotedRide> {
+    const { distanceM, durationS } = await requestedRoute(this.routing, { pickup, dropoff });
+    const trip = { distanceM, durationS };
+    return { ...names, vehicleType, trip, amountCents: calculateFare(this.config.fareRates, vehicleType, trip).amountCents };
   }
 
   /** Drops the open Ride Request. A matched Driver is released where it is. One that pauses Ride Requests needs `pauseAccepted`, so the Rider is never paused unwarned. */
@@ -83,31 +137,58 @@ export class RideRequestService {
         driver.id === matchedId && open.approach ? releasedDriver(driver, sandbox.area, matchedDriverPosition(open, sandbox.resumedAtMs, nowMs)!) : driver,
       );
       const released = drivers.find((driver) => driver.id === matchedId);
-      return { sandbox: { ...sandbox, drivers, rideRequest: undefined }, result: released?.own };
+      const cancelled = { ...sandbox, drivers, rideRequest: undefined };
+      await this.ledger.record(accountId, cancelled, nowMs);
+      return { sandbox: cancelled, result: released?.own };
     });
+    await this.ledger.settle(accountId);
     if (path) this.areas.keepFetching(path);
   }
 
   /** Looks for the matched Driver's route again, if the last search found none. */
-  async retryRoute(accountId: string): Promise<void> {
-    const again = await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
+  async retryRoute(accountId: string, holdId?: unknown): Promise<void> {
+    const again = await this.lookAgain(accountId, holdId, (sandbox, nowMs) => {
       const open = openRideRequest(sandbox, nowMs);
-      if (open.approach?.route !== 'unavailable') return { sandbox, result: null };
-      const rideRequest: StoredRideRequest = { ...open, approach: { ...open.approach, route: null } };
-      return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };
+      return open.approach?.route === 'unavailable' ? { ...open, approach: { ...open.approach, route: null } } : null;
     });
     if (again) void this.findRoutes(accountId, again);
   }
 
   /** Looks for the Ride's route to the Drop-off Point again, if the last search found none. */
-  async retryRideRoute(accountId: string): Promise<void> {
-    const again = await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
+  async retryRideRoute(accountId: string, holdId?: unknown): Promise<void> {
+    const again = await this.lookAgain(accountId, holdId, (sandbox, nowMs) => {
       const current = currentRide(sandbox, nowMs);
-      if (current.rideRoute !== 'unavailable') return { sandbox, result: null };
-      const rideRequest: StoredRideRequest = { ...current, rideRoute: null };
-      return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };
+      return current.rideRoute === 'unavailable' ? { ...current, rideRoute: null } : null;
     });
     if (again) void this.findRideRoute(accountId, again);
+  }
+
+  /**
+   * Sets a Ride Request that could not get a route to look for it again, and gives it as it then is, or null if it has nothing to look for.
+   * Its hold was released when the search gave up, so the Fare is held again first.
+   * `reset` gives the Ride Request ready to look again, or null.
+   */
+  private async lookAgain(accountId: string, holdId: unknown, reset: (sandbox: Sandbox, nowMs: number) => StoredRideRequest | null): Promise<StoredRideRequest | null> {
+    const stuck = await this.sandboxes.change(accountId, async (sandbox, _drivers, nowMs) => {
+      const rideRequest = reset(sandbox, nowMs);
+      // The release is noted here, in case the API has not got to it.
+      if (rideRequest) await this.ledger.record(accountId, sandbox, nowMs);
+      return { sandbox, result: rideRequest };
+    });
+    if (!stuck) return null;
+    await this.ledger.settle(accountId);
+    const paymentId = this.payments.required ? await this.payments.holdAgain(accountId, stuck.id, holdId) : null;
+    try {
+      return await this.sandboxes.change(accountId, async (sandbox, _drivers, nowMs) => {
+        const rideRequest = reset(sandbox, nowMs);
+        if (!rideRequest || rideRequest.id !== stuck.id) throw new ConflictException('Your Ride has moved on. Try again.');
+        if (paymentId && !(await this.payments.attach(paymentId, rideRequest.id))) throw new ConflictException('The hold on your Fare has lapsed. Try again.');
+        return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };
+      });
+    } catch (error) {
+      if (paymentId) await this.payments.abandon(accountId, paymentId);
+      throw error;
+    }
   }
 
   /** Asks the Driver to end the Ride early. The simulated Driver drives on for a short while, then stops. Asking again changes nothing. */

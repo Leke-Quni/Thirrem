@@ -99,3 +99,12 @@ export class RideRequestRateLimitGuard extends RateLimitGuard {
     super(clock, options);
   }
 }
+
+@Injectable()
+export class PaymentRateLimitGuard extends RateLimitGuard {
+  protected readonly message = 'Too many payment requests. Please wait a minute and try again.';
+
+  constructor(clock: SimulationClock, @Inject(ROUTE_RATE_LIMIT) options: RateLimitOptions) {
+    super(clock, options);
+  }
+}
