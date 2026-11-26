@@ -19,11 +19,11 @@ describe('sandboxCentre', () => {
     expect(sandboxCentre({ status: 'found', point: london }, null)).toEqual(london);
   });
 
-  it('stays at the device location for a Pickup Point within 10 km of it', () => {
-    expect(sandboxCentre({ status: 'found', point: london }, nearLondon)).toEqual(london);
+  it('moves to a Pickup Point near the device location', () => {
+    expect(sandboxCentre({ status: 'found', point: london }, nearLondon)).toEqual(nearLondon);
   });
 
-  it('moves to a Pickup Point more than 10 km from the device location', () => {
+  it('moves to a Pickup Point far from the device location', () => {
     expect(sandboxCentre({ status: 'found', point: london }, paris)).toEqual(paris);
   });
 
