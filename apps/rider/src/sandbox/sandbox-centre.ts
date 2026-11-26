@@ -6,7 +6,6 @@ export type DeviceLocation = { status: 'finding' } | { status: 'found'; point: C
 const [lon, lat] = DEFAULT_VIEW.center;
 const FALLBACK: Coordinate = { lat, lon };
 const SAME_PLACE_KM = 1;
-const FAR_PICKUP_KM = 10;
 
 function distanceKm(a: Coordinate, b: Coordinate): number {
   const radians = (degrees: number) => (degrees * Math.PI) / 180;
@@ -17,8 +16,8 @@ function distanceKm(a: Coordinate, b: Coordinate): number {
 
 /** Where the simulated Drivers belong, or null while that is not yet known. */
 export function sandboxCentre(location: DeviceLocation, pickup: Coordinate | null): Coordinate | null {
-  if (location.status === 'found') return pickup && distanceKm(location.point, pickup) > FAR_PICKUP_KM ? pickup : location.point;
   if (pickup) return pickup;
+  if (location.status === 'found') return location.point;
   return location.status === 'unavailable' ? FALLBACK : null;
 }
 

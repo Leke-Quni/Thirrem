@@ -821,17 +821,17 @@ test.describe('Rider Sandbox with simulated Drivers', () => {
       expect(centres).toEqual([london]);
     });
 
-    test('keeps the Drivers for a nearby Pickup Point and moves them to a far one', async ({ page }) => {
+    test('keeps the Drivers for a Pickup Point within 1 km and moves them to one further away', async ({ page }) => {
       const centres = await recordCentres(page);
       await openHome(page);
       await expect(drivers(page)).toHaveCount(40);
 
-      await choosePickup(page, { name: 'Nearby Road', lat: london.lat + 0.03, lon: london.lon });
+      await choosePickup(page, { name: 'Nearby Road', lat: london.lat + 0.005, lon: london.lon });
       await expect(page.getByText('Nearby Road', { exact: true }).first()).toBeVisible();
       expect(centres).toHaveLength(1);
 
-      await choosePickup(page, { name: 'Rue de Paris', lat: 48.8566, lon: 2.3522 });
-      await expect.poll(() => centres.at(-1)).toEqual({ lat: 48.8566, lon: 2.3522 });
+      await choosePickup(page, { name: 'Further Road', lat: london.lat + 0.03, lon: london.lon });
+      await expect.poll(() => centres.at(-1)).toEqual({ lat: london.lat + 0.03, lon: london.lon });
       expect(centres).toHaveLength(2);
     });
   });
