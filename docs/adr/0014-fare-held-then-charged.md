@@ -8,6 +8,12 @@ A route search that gives up releases the hold at once, although the Rider can l
 
 A timer charges and releases each second, whether or not the app is open, and opening the Sandbox or requesting a Ride does it too. What a journey came to is written down before Stripe is asked, so a charge that fails is tried again after its Sandbox has gone.
 
+## A Fare that could not be charged
+
+A charge fails when its hold has gone or the card refuses it. The Fare is then unpaid, and the account cannot make a Ride Request until it is paid. A charge Stripe does not answer is not a failed one: the money is still held, so it is tried again and stops nobody. Asking for a Ride Request, or for what is owed, first charges what has fallen due, so a failure is known at once.
+
+Paying places a new hold for the amount due on the method the Rider chooses, and captures it, so that bank verification works as it does for a Ride Request. The default method is not changed. A hold waiting on the bank is released after 10 minutes, or when the Rider starts over, and the Fare stays unpaid. The same payment row is kept, with the newest hold, so a Ride has one record of what was paid.
+
 ## An exception to ADR 0005
 
 Sandboxes, Ride Requests and Rides are still held in memory and reset as before. Open holds and payments are kept in the database: the date, Vehicle Type, the names of the Pickup Point and Drop-off Point, distance, time, amounts held and charged, and the outcome. Money held must outlive a restart to be released, and a Rider's record of what they paid must outlive their Sandbox.
@@ -20,5 +26,5 @@ The names say roughly where the Rider was, which ADR 0005 avoids keeping. No coo
 - A Ride Request now needs the routing server, to price it.
 - A lost Sandbox's hold is released even if its Ride had finished but had not yet been noted, which the timer leaves about a second for.
 - A hold whose Stripe answer is lost, by a crash or a broken connection, is not released by the API. Stripe releases it after about 7 days.
-- A Fare whose hold can no longer be charged is marked unpaid. Retrying it comes with #67.
+- Without Stripe keys, an unpaid Fare cannot be paid, but stops nobody.
 - The timer looks at Sandboxes in this API process only, so several processes would need shared Sandboxes (ADR 0005) before any could settle safely.
