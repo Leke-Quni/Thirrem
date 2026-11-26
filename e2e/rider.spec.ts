@@ -1827,6 +1827,46 @@ test.describe('Rider Ride Request', () => {
     await expect(panel.getByRole('button', { name: 'Start a new Sandbox' })).toHaveCount(0);
   });
 
+  test('opens the receipt of a completed Ride', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    const receipt = {
+      id: 'receipt-1', rideId: 'request', amountCents: 199, currency: 'EUR', requestedAt: '2026-01-01T12:00:00.000Z', vehicleType: 'economy', pickupName: 'School Road', dropoffName: 'School Road',
+      distanceM: 2000, durationS: 200, breakdown: { baseCents: 150, distanceCents: 26, timeCents: 23, longDistanceCents: 0 }, adjustmentCents: 0, paymentMethod: { brand: 'visa', last4: '4242', wallet: null },
+    };
+    // The newest receipt may be that of an earlier Ride.
+    await page.route('**/rider/receipts', (r) => r.fulfill({ json: { receipts: [{ ...receipt, id: 'receipt-0', rideId: 'earlier' }, receipt], total: 2, next: null } }));
+    await page.route('**/rider/receipts/receipt-1', (r) => r.fulfill({ json: receipt }));
+
+    complete();
+    await panel.getByRole('link', { name: 'View receipt' }).click();
+
+    await expect(page).toHaveURL(/\/receipts\/receipt-1$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Receipt' })).toBeVisible();
+  });
+
+  test('offers the list of receipts when that of a completed Ride cannot be looked for', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    await page.route('**/rider/receipts', (r) => r.abort());
+
+    complete();
+
+    await expect(panel.getByRole('link', { name: 'See your receipts' })).toHaveAttribute('href', '/receipts');
+  });
+
+  test('offers no receipt for a completed Ride that has none', async ({ page }) => {
+    const { panel, complete } = await onRide(page);
+    let asked = false;
+    await page.route('**/rider/receipts', (r) => {
+      asked = true;
+      return r.fulfill({ json: { receipts: [], total: 0, next: null } });
+    });
+
+    complete();
+
+    await expect.poll(() => asked).toBe(true);
+    await expect(panel.getByRole('link', { name: /receipt/i })).toHaveCount(0);
+  });
+
   const unpaid = { id: 'fare-1', amountCents: 199, currency: 'EUR', vehicleType: 'economy', pickupName: 'School Road', dropoffName: 'School Road', requestedAt: '2026-01-01T12:00:00.000Z' };
   const OWED = 'Your €1.99 Fare could not be charged. Pay it before requesting another Ride.';
 

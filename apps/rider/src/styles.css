@@ -549,3 +549,51 @@ footer { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(-
 .card-fields { position: relative; min-height: 150px; }
 .card-fields-skeleton { position: absolute; inset: 0; }
 @media (prefers-reduced-motion: reduce) { .methods-skeleton .skeleton-field, .card-fields-skeleton { animation: none; } }
+
+/* ---- receipts ---- */
+.receipts-layout { box-sizing: border-box; width: 100%; max-width: 640px; margin: 0 auto; padding: 40px 20px 56px; }
+.receipts-layout h1 { font-size: 32px; margin-bottom: 8px; }
+.receipts-layout header > h1:last-child { margin-bottom: 24px; }
+.receipts-back { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px; color: var(--accent-text); font-size: 14px; font-weight: 600; text-decoration: none; touch-action: manipulation; }
+.receipts-back:hover { text-decoration: underline; text-underline-offset: 4px; }
+.receipts-back:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.receipts { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.receipts li { content-visibility: auto; contain-intrinsic-size: auto 118px; }
+/* Inside the row, as a row left unpainted by content-visibility clips whatever falls outside it. */
+.receipts a { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 16px; padding: 16px 20px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--card); color: var(--fg); text-decoration: none; touch-action: manipulation; transition: border-color 0.15s, background-color 0.15s; }
+.receipts a:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.receipts a:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.receipts time { font-weight: 600; font-size: 15px; }
+.receipts strong { font-family: var(--font-head); font-weight: 600; font-size: 20px; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.receipts span { grid-column: 1 / -1; min-width: 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.receipts span:last-child { font-size: 13px; color: var(--muted); }
+.receipts-empty { display: grid; justify-items: start; gap: 16px; padding: 24px 20px; border: 1px dashed var(--border); border-radius: var(--radius); }
+.receipts-empty p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.receipts-empty strong { display: block; color: var(--fg); }
+.receipt { gap: 20px; }
+.receipt p { margin: 0; }
+.receipt-when { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; font-size: 15px; }
+.receipt-when time { font-weight: 600; }
+.receipt-when span { color: var(--muted); }
+/* The line joins the two marks, as the route does on the map. */
+.receipt-route { margin: 0; display: grid; gap: 18px; }
+.receipt-route div { position: relative; padding-left: 32px; }
+.receipt-route div:first-child::after { content: ''; position: absolute; left: 8px; top: 22px; bottom: -16px; width: 2px; border-radius: 1px; background: var(--accent); }
+.receipt-route dt { font-size: 13px; color: var(--muted); }
+.receipt-route .pin-glyph { position: absolute; left: 0; top: 2px; box-sizing: border-box; }
+.receipt-route dd { margin: 0; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.receipt-lines { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.receipt-lines th, .receipt-lines td { padding: 10px 0; border-top: 1px solid var(--border); vertical-align: baseline; font-size: 15px; }
+.receipt-lines th { text-align: left; font-weight: 400; padding-right: 16px; }
+.receipt-lines th span { margin-left: 6px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.receipt-lines td { text-align: right; white-space: nowrap; }
+/* The one heavy rule: everything above it adds up to what is below. */
+.receipt-lines tfoot th, .receipt-lines tfoot td { padding-top: 16px; border-top: 2px solid var(--fg); font-weight: 600; }
+.receipt-lines tfoot td { font-family: var(--font-head); font-size: 30px; line-height: 1.2; letter-spacing: -0.035em; }
+.receipt-paid { font-size: 15px; }
+.receipts-skeleton { display: grid; gap: 10px; }
+.receipts-more { margin-top: 10px; }
+.receipts-skeleton .skeleton-field { height: 114px; border-radius: var(--radius); }
+.receipt-skeleton .skeleton-block.tall { height: 220px; }
+@media (max-width: 359px) { .receipts-layout .payment-panel { padding: 16px; } .receipts a { padding: 14px; } .receipt-lines tfoot td { font-size: 24px; } }
+@media (prefers-reduced-motion: reduce) { .receipts-skeleton span, .receipt-skeleton span { animation: none; } .receipts a { transition: none; } }

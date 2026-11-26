@@ -300,7 +300,7 @@ test.describe('Rider account menu', () => {
     await expect(link).toHaveCount(0);
 
     await menu(page).click();
-    await link.focus();
+    await page.getByRole('link', { name: 'Receipts' }).focus();
     await page.keyboard.press('Tab');
     await expect(link).toHaveCount(0);
 

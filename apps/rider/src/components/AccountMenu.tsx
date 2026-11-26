@@ -55,6 +55,11 @@ export function AccountMenu({ email }: { email: string }) {
                 Payment
               </NavLink>
             </li>
+            <li>
+              <NavLink to="/receipts" onClick={() => setOpen(false)}>
+                Receipts
+              </NavLink>
+            </li>
           </ul>
         </div>
       )}

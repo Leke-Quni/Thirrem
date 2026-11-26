@@ -4,6 +4,7 @@ import { formatFare } from '../map/format';
 import type { PlanPoint } from '../map/planner';
 import type { FareState } from '../map/useFareQuote';
 import { UnpaidFareNotice } from '../payment/UnpaidFareNotice';
+import { RideReceiptLink } from '../receipt/RideReceiptLink';
 import { ArrivalStatus } from './ArrivalStatus';
 import { EndRide } from './EndRide';
 import { NewSandbox } from './NewSandbox';
@@ -73,6 +74,8 @@ export function RidePanel({ ride, pickup, dropoff, fare, onStartNew, onDone, onR
         )}
       </div>
       {finalFare && <UnpaidFareNotice fares={unpaidFares} />}
+      {/* Looked for again once the unpaid Fares have been, as paying one makes a receipt. */}
+      {finalFare && <RideReceiptLink rideId={ride.id} occasion={String(unpaidFares.length)} />}
       <DriverCard driver={ride.driver} />
       <p className="request-note">
         {finalFare

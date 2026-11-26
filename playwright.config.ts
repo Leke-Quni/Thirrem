@@ -6,7 +6,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 4,
   projects: [
     { name: 'api', testMatch: 'smoke.spec.ts', use: { baseURL: 'http://localhost:3100' } },
-    { name: 'rider', testMatch: ['rider.spec.ts', 'rider-payment.spec.ts'], use: { baseURL: 'http://localhost:5173' } },
+    { name: 'rider', testMatch: ['rider.spec.ts', 'rider-payment.spec.ts', 'rider-receipts.spec.ts'], use: { baseURL: 'http://localhost:5173' } },
   ],
   webServer: [
     {

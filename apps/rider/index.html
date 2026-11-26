@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
     <script>
       // Without a session there is no planner to load, so go to the landing page before anything is drawn.
-      if (/^\/(home|payment)(\/|$)/.test(location.pathname) && !localStorage.getItem('thirrem-rider-token')) history.replaceState(null, '', '/');
+      if (/^\/(home|payment|receipts)(\/|$)/.test(location.pathname) && !localStorage.getItem('thirrem-rider-token')) history.replaceState(null, '', '/');
       var light = localStorage.getItem('thirrem-theme') === 'light';
       document.documentElement.dataset.theme = light ? 'light' : 'dark';
       document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#eef0f4' : '#07090d');
@@ -48,6 +48,13 @@
       .boot-panel { display: grid; gap: 10px; padding: 24px; border-radius: 20px; background: var(--boot-card); border: 1px solid var(--boot-border); }
       .boot-panel span { display: block; height: 62px; border-radius: 12px; background: linear-gradient(90deg, var(--boot-field), var(--boot-raised), var(--boot-field)); background-size: 200% 100%; animation: boot-shimmer 1.2s linear infinite; }
       .boot-panel.is-side span { height: 340px; }
+      .boot-receipts { box-sizing: border-box; width: 100%; max-width: 640px; margin: 0 auto; padding: 40px 20px 56px; }
+      .boot-receipts h1 { margin: 0 0 8px; font-size: 32px; letter-spacing: -0.035em; color: var(--boot-fg); }
+      .boot-receipts p { margin: 0 0 24px; }
+      .boot-receipts header > p:first-child { margin: 0 0 12px; font-size: 14px; }
+      .boot-receipts header > h1:last-child { margin-bottom: 24px; }
+      .boot-rows { display: grid; gap: 10px; }
+      .boot-rows span { display: block; height: 114px; border-radius: 16px; border: 1px solid var(--boot-border); background: linear-gradient(90deg, var(--boot-field), var(--boot-raised), var(--boot-field)); background-size: 200% 100%; animation: boot-shimmer 1.2s linear infinite; }
       @media (max-width: 880px) { .boot-payment { grid-template-columns: minmax(0, 1fr); max-width: 640px; gap: 0; } .boot-panel.is-side { margin-top: 24px; } }
       @keyframes boot-draw { 0% { stroke-dashoffset: 1; } 70%, 100% { stroke-dashoffset: 0; } }
       @keyframes boot-pin { 0%, 55% { opacity: 0.35; transform: translateY(-4px) scale(0.9); } 75%, 100% { opacity: 1; transform: none; } }
@@ -56,7 +63,7 @@
       @media (max-width: 560px) { .boot-account { width: 40px; } }
       @media (max-width: 440px) { .boot-bar { padding: 0 12px; } .boot-links { gap: 8px; } .boot-logout { width: 88px; } }
       @media (max-width: 359px) { .boot-bar { padding: 0 8px; } .boot-links { gap: 6px; } .boot-logout { width: 80px; } }
-      @media (prefers-reduced-motion: reduce) { .boot-line, .boot-pin, .boot-planner span, .boot-panel span, .boot-account, .boot-logout { animation: none; } .boot-line { stroke-dashoffset: 0; } }
+      @media (prefers-reduced-motion: reduce) { .boot-line, .boot-pin, .boot-planner span, .boot-panel span, .boot-rows span, .boot-account, .boot-logout { animation: none; } .boot-line { stroke-dashoffset: 0; } }
     </style>
   </head>
   <body>
@@ -113,10 +120,49 @@
         </main>
       </div>
     </template>
+    <template id="boot-receipts">
+      <div class="boot-page" aria-busy="true">
+        <header class="boot-bar">
+          <span class="boot-logo"><i></i>Thirrem</span>
+          <span class="boot-links"><span class="boot-account"></span><span class="boot-toggle"></span><span class="boot-logout"></span></span>
+        </header>
+        <span class="boot-sr" role="status">Loading your receipts…</span>
+        <main class="boot-receipts">
+          <header>
+            <h1>Receipts</h1>
+            <p>Test mode. No real money is taken.</p>
+          </header>
+          <div class="boot-rows" aria-hidden="true"></div>
+        </main>
+      </div>
+    </template>
+    <template id="boot-receipt">
+      <div class="boot-page" aria-busy="true">
+        <header class="boot-bar">
+          <span class="boot-logo"><i></i>Thirrem</span>
+          <span class="boot-links"><span class="boot-account"></span><span class="boot-toggle"></span><span class="boot-logout"></span></span>
+        </header>
+        <span class="boot-sr" role="status">Loading your receipt…</span>
+        <main class="boot-receipts">
+          <header>
+            <p>All receipts</p>
+            <h1>Receipt</h1>
+          </header>
+          <div class="boot-panel" aria-hidden="true"><span></span><span></span><span></span></div>
+        </main>
+      </div>
+    </template>
     <script>
-      var page = location.pathname.match(/^\/(home|payment)(\/|$)/);
+      var page = location.pathname.match(/^\/(home|payment|receipts)(\/[^/]+|\/|$)/);
       if (page) {
-        document.getElementById('root').appendChild(document.getElementById('boot-' + page[1]).content.cloneNode(true));
+        var shell = page[1] === 'receipts' && page[2] && page[2] !== '/' ? 'receipt' : page[1];
+        document.getElementById('root').appendChild(document.getElementById('boot-' + shell).content.cloneNode(true));
+        var rows = document.querySelector('.boot-rows');
+        if (rows) {
+          // One shell for each receipt there was last time, up to the 6 that come at once.
+          var kept = localStorage.getItem('thirrem-rider-receipt-count');
+          for (var left = kept === null ? 6 : Math.min(Number(kept), 6); left > 0; left--) rows.appendChild(document.createElement('span'));
+        }
       }
     </script>
     <script type="module" src="/src/main.tsx"></script>
