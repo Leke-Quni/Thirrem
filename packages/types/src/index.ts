@@ -173,3 +173,24 @@ export interface SandboxLiveMessage {
 
 /** Why the live feed closes: an unknown session, no Sandbox to watch, no token sent in time, or a stopped Sandbox. */
 export type SandboxLiveCloseCode = 4401 | 4404 | 4408 | 4410;
+
+export type Wallet = 'apple_pay' | 'google_pay';
+
+export interface PaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  /** The wallet the card was saved through, if it was not typed in. */
+  wallet: Wallet | null;
+  isDefault: boolean;
+}
+
+export interface PaymentMethodsResponse {
+  /** The key Stripe's card form is shown with, or null when payments are not set up. */
+  publishableKey: string | null;
+  methods: PaymentMethod[];
+}
+
+export interface CardSetupResponse {
+  clientSecret: string;
+}

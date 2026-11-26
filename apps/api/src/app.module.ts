@@ -14,6 +14,13 @@ import { CancelHistoryRepository } from './dispatch/cancel-history.repository.js
 import { InMemoryCancelHistoryRepository } from './dispatch/in-memory-cancel-history.repository.js';
 import { RideRequestService } from './dispatch/ride-request.service.js';
 import { RiderRideRequestController } from './dispatch/rider-ride-request.controller.js';
+import { PaymentMethodRepository } from './payments/payment-method.repository.js';
+import { PaymentMethodService } from './payments/payment-method.service.js';
+import { PaymentService } from './payments/payment.service.js';
+import { PgPaymentMethodRepository } from './payments/pg-payment-method.repository.js';
+import { RiderPaymentMethodController } from './payments/rider-payment-method.controller.js';
+import { StripePaymentService } from './payments/stripe-payment.service.js';
+import { UnavailablePaymentService } from './payments/unavailable-payment.service.js';
 import { RoadGraphController } from './road-graph/road-graph.controller.js';
 import { CachingRoutingService } from './routing/caching-routing.service.js';
 import { OsrmRoutingService } from './routing/osrm-routing.service.js';
@@ -23,7 +30,7 @@ import { CachingPlaceSearchService } from './places/caching-place-search.service
 import { PhotonPlaceSearchService } from './places/photon-place-search.service.js';
 import { PlaceSearchService } from './places/place-search.service.js';
 import { RiderPlacesController } from './places/rider-places.controller.js';
-import { AuthRateLimitGuard, FareRateLimitGuard, RATE_LIMIT, RideRequestRateLimitGuard, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SandboxRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
+import { AuthRateLimitGuard, FareRateLimitGuard, PaymentRateLimitGuard, RATE_LIMIT, RideRequestRateLimitGuard, ROUTE_RATE_LIMIT, RouteRateLimitGuard, SandboxRateLimitGuard, SEARCH_RATE_LIMIT, SearchRateLimitGuard } from './security/rate-limiter.js';
 import { AreaRepository } from './sandbox/area.repository.js';
 import { AreaService } from './sandbox/area.service.js';
 import { InMemoryAreaRepository } from './sandbox/in-memory-area.repository.js';
@@ -43,7 +50,7 @@ import { SimulationClock, SystemClock } from './simulation-clock/simulation-cloc
 const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
 
 @Module({
-  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController],
+  controllers: [HealthController, RoadGraphController, RiderAuthController, RiderRouteController, RiderFareController, RiderPlacesController, RiderSandboxController, RiderRideRequestController, RiderPaymentMethodController],
   providers: [
     appConfigProvider,
     AuthRateLimitGuard,
@@ -56,6 +63,14 @@ const emptyRoadGraph: RoadGraph = { nodes: [], edges: [] };
     {
       provide: RoutingService,
       useFactory: (config: AppConfig) => new CachingRoutingService(new OsrmRoutingService(config.osrmUrl)),
+      inject: [APP_CONFIG],
+    },
+    PaymentRateLimitGuard,
+    PaymentMethodService,
+    { provide: PaymentMethodRepository, useClass: PgPaymentMethodRepository },
+    {
+      provide: PaymentService,
+      useFactory: (config: AppConfig) => (config.stripe ? new StripePaymentService(config.stripe) : new UnavailablePaymentService()),
       inject: [APP_CONFIG],
     },
     RouteRateLimitGuard,

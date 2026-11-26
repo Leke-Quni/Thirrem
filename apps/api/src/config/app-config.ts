@@ -1,5 +1,10 @@
 import { type FareRates, FARE_RATES } from '../fares/fare-rates.js';
 
+export interface StripeKeys {
+  secretKey: string;
+  publishableKey: string;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -12,6 +17,8 @@ export interface AppConfig {
   routeRateLimit: { limit: number; windowMs: number };
   authRateLimit: { limit: number; windowMs: number };
   fareRates: FareRates;
+  /** Stripe test mode keys, or null when card payments are not set up. */
+  stripe: StripeKeys | null;
   live: { intervalMs: number; helloTimeoutMs: number };
   sandboxSweepMs: number;
   /** The most Sandboxes that run at once. */
@@ -37,6 +44,15 @@ const splitList = (value: string | undefined) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+// Thirrem takes no real money, so a live key is a mistake to stop at once.
+function stripeKeys(env: NodeJS.ProcessEnv): StripeKeys | null {
+  const secretKey = env.STRIPE_SECRET_KEY?.trim() ?? '';
+  const publishableKey = env.STRIPE_PUBLISHABLE_KEY?.trim() ?? '';
+  if (secretKey && !/^(sk|rk)_test_/.test(secretKey)) throw new Error('STRIPE_SECRET_KEY must be a Stripe test mode key (sk_test_ or rk_test_)');
+  if (publishableKey && !publishableKey.startsWith('pk_test_')) throw new Error('STRIPE_PUBLISHABLE_KEY must be a Stripe test mode key (pk_test_)');
+  return secretKey && publishableKey ? { secretKey, publishableKey } : null;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const production = env.NODE_ENV === 'production';
   if (production && !env.DATABASE_URL) throw new Error('DATABASE_URL is required in production');
@@ -53,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     osrmUrl: (env.OSRM_URL ?? 'https://router.project-osrm.org').replace(/\/$/, ''),
     authRateLimit: { limit: Number(env.AUTH_RATE_LIMIT ?? 10), windowMs: 60_000 },
     fareRates: FARE_RATES,
+    stripe: stripeKeys(env),
     live: { intervalMs: 1_000, helloTimeoutMs: 5_000 },
     sandboxSweepMs: 60_000,
     sandboxLimit: 30,
