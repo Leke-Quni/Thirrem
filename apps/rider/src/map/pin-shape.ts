@@ -1,2 +1,1 @@
-export const DROPOFF_PIN_PATH = 'M17 43C17 43 3 27.5 3 16.5C3 8.5 9.3 2 17 2s14 6.5 14 14.5C31 27.5 17 43 17 43z';
-export const DROPOFF_PIN_VIEWBOX = '0 0 34 44';
+export { DROPOFF_PIN_PATH, DROPOFF_PIN_VIEWBOX } from '@thirrem/ui';
