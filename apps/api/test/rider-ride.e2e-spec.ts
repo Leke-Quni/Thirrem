@@ -22,6 +22,8 @@ const APPROACH_MS = 100_000;
 const matchedAfterMs = (awayM: number) => searchAreas(pickup, [north(awayM)]).findIndex((area) => area.length > 0) * WINDOW_MS + ACCEPT_AFTER_MS;
 const ACCEPT_MS = matchedAfterMs(1_000);
 const PICKUP_MS = ACCEPT_MS + APPROACH_MS + BOARDING_MS;
+/** The Ride is usually 2 km long, which is 200 s of driving. */
+const RIDE_MS = 200_000;
 
 describe('The Ride from the Pickup Point to the Drop-off Point', () => {
   const apps: INestApplication[] = [];
@@ -60,12 +62,16 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
       const sandbox = await open();
       return { ...sandbox, driver: sandbox.drivers[0]! };
     };
+    const cancel = async () => {
+      await request(server).delete('/rider/ride-requests').set('Authorization', authorization).expect(204);
+      await searched();
+    };
     const retry = async (path: 'ride-requests/approach' | 'rides/route', status = 204) => {
       const res = await request(server).post(`/rider/${path}`).set('Authorization', authorization).expect(status);
       await searched();
       return res;
     };
-    return { server, clock, routing, dropoff, open, after, ask, retry };
+    return { server, clock, routing, dropoff, open, after, ask, retry, cancel };
   };
 
   const etaOf = (ride: Ride | null) => (ride?.progress.status === 'driving' ? ride.progress.etaS : undefined);
@@ -94,6 +100,7 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
         dropoff,
         driver: before.driver,
         progress: { status: 'driving', geometry: [[pickup.lon, expect.closeTo(pickup.lat, 6)], [dropoff.lon, dropoff.lat]], etaS: 200 },
+        finalFare: null,
       });
       expect(sandbox.driver.available).toBe(false);
     });
@@ -129,14 +136,107 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
       expect(later.ride?.progress).toMatchObject({ geometry: [[later.driver.lon, later.driver.lat], [dropoff.lon, dropoff.lat]] });
     });
 
-    it('keeps the vehicle at the Drop-off Point once there', async () => {
+  });
+
+  describe('completion at the Drop-off Point', () => {
+    it('completes the Ride as the vehicle gets there, and not before', async () => {
       const { after, dropoff } = await requested();
 
-      const sandbox = await after(PICKUP_MS + 500_000);
+      const before = await after(PICKUP_MS + RIDE_MS - 1);
 
+      expect(before.ride).toMatchObject({ progress: { status: 'driving' }, finalFare: null });
+
+      const sandbox = await after(1);
+
+      expect(sandbox.ride).toMatchObject({ id: before.ride!.id, progress: { status: 'arrived' } });
+      expect(sandbox.ride!.finalFare).not.toBeNull();
       expect(distanceM(sandbox.driver, dropoff)).toBeLessThan(0.01);
-      expect(sandbox.driver.available).toBe(false);
-      expect(sandbox.ride?.progress).toEqual({ status: 'arrived' });
+    });
+
+    it('charges the Fare of the Vehicle Type for the distance and time of the Ride', async () => {
+      const { after } = await requested();
+
+      const { ride } = await after(PICKUP_MS + RIDE_MS);
+
+      // Economy: €1.50, then €0.13 for each of 2 km and €0.07 for each of 3 min 20 s.
+      expect(ride!.finalFare).toEqual({ amountCents: 199, currency: 'EUR' });
+    });
+
+    it('no longer has a Ride whose route could be looked for', async () => {
+      const { after, retry } = await requested();
+      await after(PICKUP_MS + RIDE_MS);
+
+      const res = await retry('rides/route', 409);
+
+      expect(res.body.message).toMatch(/not on a Ride/i);
+    });
+  });
+
+  describe('after a Ride has completed', () => {
+    it('makes the Driver Available again, where the Rider got out', async () => {
+      const { after, dropoff } = await requested();
+
+      const completed = await after(PICKUP_MS + RIDE_MS);
+      const later = await after(60_000);
+
+      for (const { driver } of [completed, later]) {
+        expect(driver.available).toBe(true);
+        expect(distanceM(driver, dropoff)).toBeLessThan(0.01);
+        expect(driver.heading).toBeCloseTo(180, 0);
+      }
+    });
+
+    it('lets the Rider make another Ride Request, which takes the place of the Ride', async () => {
+      const { after, ask } = await requested();
+      const { ride } = await after(PICKUP_MS + RIDE_MS);
+
+      await ask(201);
+      const sandbox = await after(0);
+
+      expect(sandbox.ride).toBeNull();
+      expect(sandbox.rideRequest).toMatchObject({ status: 'searching' });
+      expect(sandbox.rideRequest!.id).not.toBe(ride!.id);
+    });
+
+    it('no longer keeps its Drivers when the centre moves far away', async () => {
+      const { after, open } = await requested();
+      const { driver } = await after(PICKUP_MS + RIDE_MS);
+
+      const moved = await open(north(50_000));
+
+      expect(moved.ride).toBeNull();
+      expect(moved.drivers[0]!.id).not.toBe(driver.id);
+    });
+
+    it('releases the same Driver where a cancel finds it, not back where the last Ride ended', async () => {
+      const { after, ask, cancel } = await requested();
+      await after(PICKUP_MS + RIDE_MS);
+      await ask(201);
+      await searched();
+      const { driver } = await after(matchedAfterMs(-2_000) + 50_000);
+
+      await cancel();
+
+      const released = await after(0);
+      expect(released.driver.available).toBe(true);
+      expect(distanceM(released.driver, driver)).toBeLessThan(0.01);
+    });
+
+    it('matches the same Driver again, who sets off from where the last Ride ended', async () => {
+      const { after, ask, dropoff, routing } = await requested();
+      const { driver } = await after(PICKUP_MS + RIDE_MS);
+
+      await ask(201);
+      await searched();
+
+      const searching = await after(0);
+      expect(distanceM(searching.driver, dropoff)).toBeLessThan(0.01);
+      expect(routing.requests[2]!.from.lat).toBeCloseTo(dropoff.lat, 6);
+
+      const matched = await after(matchedAfterMs(-2_000) + 50_000);
+
+      expect(matched.rideRequest).toMatchObject({ status: 'matched', driver: { id: driver.id } });
+      expect(distanceM(matched.driver, north(-1_500))).toBeLessThan(1);
     });
   });
 
@@ -246,6 +346,30 @@ describe('The Ride from the Pickup Point to the Drop-off Point', () => {
 
       expect(sandbox.ride).not.toBeNull();
       expect(sandbox.rideRequest).toBeNull();
+    });
+
+    it('keeps an unfinished Ride when the centre moves, however long it has been stopped', async () => {
+      const { after, open, clock } = await requested({ rideM: LONG_M });
+      const { ride } = await after(PICKUP_MS);
+      clock.advance(75 * MINUTE);
+
+      const moved = await open(north(50_000));
+
+      expect(moved.ride).toMatchObject({ id: ride!.id, finalFare: null });
+    });
+
+    it('completes the Ride after the rest of the drive, charging for it once', async () => {
+      const { after } = await requested({ rideM: LONG_M });
+      const resumed = await after(75 * MINUTE);
+      const leftMs = etaOf(resumed.ride)! * 1_000;
+      // Looked at part of the way, so the Sandbox keeps running.
+      await after(10 * MINUTE);
+
+      // Within a second, as the 20 km is only roughly that.
+      expect((await after(leftMs - 10 * MINUTE - 1_000)).ride!.finalFare).toBeNull();
+      // Economy: €1.50, then €0.13 for each of 20 km and €0.07 for each of 33 min 20 s.
+      expect((await after(2_000)).ride!.finalFare).toEqual({ amountCents: 643, currency: 'EUR' });
+      expect((await after(75 * MINUTE)).ride!.finalFare).toEqual({ amountCents: 643, currency: 'EUR' });
     });
 
     it('picks the Rider up after the rest of an approach that the stop interrupted', async () => {

@@ -18,6 +18,8 @@ export interface SandboxDriver {
   joined: { path: RoadPath; startM: number; atMs: number } | null;
   /** Where a Driver released from a Ride Request drives from then on, instead of the shared area. */
   own?: Area;
+  /** Set once the Driver has dropped a Rider off: it waits there, off its path. */
+  parked?: PathPosition;
 }
 
 export function sandboxDriver(id: string, station: number, area: Area, nowMs: number, random: Random): SandboxDriver {
@@ -43,17 +45,18 @@ const metresAlong = ({ path, startM, atMs }: Drive, pace: number, nowMs: number)
 
 /** The Driver as it is at `nowMs`: driving its path, or parked while it has none. */
 export function driverAt(driver: SandboxDriver, area: Area, resumedAtMs: number, nowMs: number): Omit<SimulatedDriver, 'available'> {
-  const parked = (driver.own ?? area).stations[driver.station]!;
+  const station = (driver.own ?? area).stations[driver.station]!;
+  if (driver.parked) return { id: driver.id, vehicleType: station.vehicleType, ...driver.parked };
   const drive = driveOf(driver, area, resumedAtMs);
-  if (!drive) return { id: driver.id, ...parked };
-  return { id: driver.id, vehicleType: parked.vehicleType, ...drive.path.at(metresAlong(drive, driver.pace, nowMs)) };
+  if (!drive) return { id: driver.id, ...station };
+  return { id: driver.id, vehicleType: station.vehicleType, ...drive.path.at(metresAlong(drive, driver.pace, nowMs)) };
 }
 
 /** The Driver parked where it is released, until a path starting there is ready, so that it does not jump back to its old one. */
 export function releasedDriver(driver: SandboxDriver, area: Area, at: PathPosition): SandboxDriver {
   const { vehicleType } = driverAt(driver, area, 0, 0);
   const own: Area = { centre: area.centre, stations: [{ vehicleType, ...at }], paths: [{ station: 0, ready: null }] };
-  return { ...driver, station: 0, joined: null, own };
+  return { ...driver, station: 0, joined: null, own, parked: undefined };
 }
 
 /** The Driver of a Sandbox that stopped at `stoppedMs`, set to carry on at `nowMs` from where it was. */

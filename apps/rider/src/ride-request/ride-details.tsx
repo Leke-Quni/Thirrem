@@ -41,11 +41,12 @@ interface RideSummaryProps {
   pickup: PlanPoint | null;
   dropoff: PlanPoint | null;
   vehicleType: VehicleType;
-  fare: FareState;
+  /** The Fare quoted, left out once the final Fare is shown. */
+  fare?: FareState;
 }
 
 export function RideSummary({ pickup, dropoff, vehicleType, fare }: RideSummaryProps) {
-  const quote = fare.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
+  const quote = fare?.status === 'ready' ? fare.fares.find((item) => item.vehicleType === vehicleType) : undefined;
   return (
     <dl className="request-summary">
       <Point label="Pickup Point" point={pickup} />
@@ -54,10 +55,12 @@ export function RideSummary({ pickup, dropoff, vehicleType, fare }: RideSummaryP
         <dt>Vehicle Type</dt>
         <dd>{VEHICLE_TYPE_NAMES[vehicleType]}</dd>
       </div>
-      <div>
-        <dt>Fare</dt>
-        <dd>{quote ? formatFare(quote.amountCents) : fare.status === 'error' ? 'Unavailable' : 'Loading…'}</dd>
-      </div>
+      {fare && (
+        <div>
+          <dt>Fare</dt>
+          <dd>{quote ? formatFare(quote.amountCents) : fare.status === 'error' ? 'Unavailable' : 'Loading…'}</dd>
+        </div>
+      )}
     </dl>
   );
 }

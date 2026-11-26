@@ -174,6 +174,12 @@ export function RideMap({ pickup, dropoff, geometry, driving, drivers, marks, lo
     fleet.current?.show(drivers, marks);
   }, [drivers, marks]);
 
+  // During the Ride the Pickup Point is behind the Rider, and its marker must not be taken for them.
+  const riding = [...marks.values()].includes('riding');
+  useEffect(() => {
+    markers.current.pickup?.setOpacity(riding ? '0.45' : '1');
+  }, [riding, pickup]);
+
   useEffect(drawRoute, [geometry, driving]);
 
   // The camera is fitted as a route appears, and then left alone while the way ahead shrinks.

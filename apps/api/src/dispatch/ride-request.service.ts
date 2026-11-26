@@ -12,7 +12,7 @@ import { SandboxService } from '../sandbox/sandbox.service.js';
 import { CancelHistoryRepository, recordCancel } from './cancel-history.repository.js';
 import { cancellation, pausedForS } from './cancel-limit.js';
 import { routed } from './drive.js';
-import { isPickedUp, matchedDriverPosition } from './ride.js';
+import { isCompleted, isPickedUp, matchedDriverPosition } from './ride.js';
 import { broadcast, cancelling, firstToAccept, isOpen, isUnderWay, matchedDriverId, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
 
 /** How long to wait before each further try, when the routing server cannot be had. */
@@ -48,7 +48,7 @@ export class RideRequestService {
   async request(accountId: string, input: RideRequestInput): Promise<RideRequest> {
     const { made, view } = await this.sandboxes.change(accountId, async (sandbox, drivers, nowMs, positionAt) => {
       const current = sandbox.rideRequest;
-      if (current && isUnderWay(current, nowMs)) {
+      if (current && isUnderWay(current, sandbox.resumedAtMs, nowMs)) {
         throw new ConflictException(isPickedUp(current, sandbox.resumedAtMs, nowMs) ? 'You are already on a Ride.' : 'You already have an open Ride Request.');
       }
       const history = await this.cancels.findByAccount(accountId);
@@ -97,7 +97,7 @@ export class RideRequestService {
   async retryRideRoute(accountId: string): Promise<void> {
     const again = await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
       const current = sandbox.rideRequest;
-      if (!current || !isPickedUp(current, sandbox.resumedAtMs, nowMs)) throw new ConflictException('You are not on a Ride.');
+      if (!current || !isPickedUp(current, sandbox.resumedAtMs, nowMs) || isCompleted(current, sandbox.resumedAtMs, nowMs)) throw new ConflictException('You are not on a Ride.');
       if (current.rideRoute !== 'unavailable') return { sandbox, result: null };
       const rideRequest: StoredRideRequest = { ...current, rideRoute: null };
       return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };

@@ -10,8 +10,8 @@ const METRES_PER_DEGREE = 111_195;
 
 export type Pose = Pick<SimulatedDriver, 'lat' | 'lon' | 'heading'>;
 
-/** How a car stands in the Rider's open Ride Request. */
-export type CarMark = 'offered' | 'matched' | 'arrived';
+/** How a car stands in the Rider's open Ride Request or Ride. `riding` has the Rider in it. */
+export type CarMark = 'offered' | 'matched' | 'riding' | 'arrived';
 
 export interface Car {
   moveTo(pose: Pose): void;

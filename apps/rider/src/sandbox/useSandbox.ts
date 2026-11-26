@@ -45,8 +45,8 @@ export function useSandbox(
       if (current.status === 'busy') return { ...current, retrying: true };
       if (!wantsNew.current && current.status === 'ready') {
         if (current.connection === 'stopped') return { ...current, connection: 'resuming' };
-        // An open Ride Request or a Ride keeps the Sandbox wherever its centre moves, so it stays on screen.
-        if (current.ride || (current.rideRequest && current.rideRequest.status !== 'failed')) return current;
+        // An open Ride Request or an unfinished Ride keeps the Sandbox wherever its centre moves, so it stays on screen.
+        if ((current.ride && !current.ride.finalFare) || (current.rideRequest && current.rideRequest.status !== 'failed')) return current;
       }
       return { status: 'loading' };
     });

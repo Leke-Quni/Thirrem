@@ -35,6 +35,11 @@ export function drivePosition(route: DriveRoute, startsAtMs: number, resumedAtMs
 /** Where the route ends, or null if there is none. */
 export const driveEnd = (route: DriveRoute): PathPosition | null => (isDriven(route) ? (pathOf(route)?.at(1) ?? null) : null);
 
+/** The route, once it has been driven to its end by `nowMs`. */
+export function drivenRoute(route: DriveRoute, startsAtMs: number, resumedAtMs: number, nowMs: number): RouteResult | undefined {
+  return isDriven(route) && drivenS(route, startsAtMs, resumedAtMs, nowMs) >= route.durationS ? route : undefined;
+}
+
 /** The drive as the Rider is told of it at `nowMs`. */
 export function driveProgress(route: DriveRoute, startsAtMs: number, resumedAtMs: number, nowMs: number): DriveProgress {
   if (!route) return { status: 'routing' };

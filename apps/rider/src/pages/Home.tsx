@@ -41,11 +41,11 @@ export function Home() {
   const [vehicleType, setVehicleType] = useState<VehicleType>('economy');
   const device = useDeviceLocation(mapState === 'ready');
   const { state: sandbox, retry: retrySandbox, startNew: startNewSandbox, requested, cancelled, routing } = useSandbox(sandboxCentre(device.location, plan.pickup), plan.pickup, plan.dropoff);
-  // A failed Ride Request the Rider has moved on from is not shown again.
+  // A failed Ride Request or a completed Ride that the Rider has moved on from is not shown again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const rideRequest = sandbox.status === 'ready' && sandbox.rideRequest?.id !== dismissed ? sandbox.rideRequest : null;
-  const ride = sandbox.status === 'ready' ? sandbox.ride : null;
-  /** What the Rider is doing, if anything: asking for a Ride, or on one. */
+  const ride = sandbox.status === 'ready' && sandbox.ride?.id !== dismissed ? sandbox.ride : null;
+  /** The Ride or Ride Request on screen, if any. */
   const journey = ride ?? rideRequest;
   const pausedForS = sandbox.status === 'ready' ? sandbox.requestsPausedForS : null;
   const warning = useCancelWarning(sandbox.status === 'ready' ? sandbox.cancelWarningAtMs : undefined, Boolean(pausedForS));
@@ -99,10 +99,28 @@ export function Home() {
     void findMe(true);
   }, [mapState]);
 
-  const startNewRide = () => {
+  /** Goes back to the planner, which takes focus from the button that was pressed. */
+  const leaveJourney = () => {
     askedHere.current = false;
     droppedRequest.current = true;
+  };
+
+  const startNewRide = () => {
+    leaveJourney();
     startNewSandbox();
+  };
+
+  const backToPlanner = (id: string) => {
+    leaveJourney();
+    setDismissed(id);
+  };
+
+  /** The next journey starts from where the Rider really is, with nothing left of the last one. */
+  const requestAnotherRide = (id: string) => {
+    backToPlanner(id);
+    dispatch({ type: 'remove', slot: 'dropoff' });
+    dispatch({ type: 'remove', slot: 'pickup' });
+    void findMe(true);
   };
 
   if (loading) return <HomeSkeleton />;
@@ -131,7 +149,7 @@ export function Home() {
       </header>
       <main className="ride-layout">
         {ride ? (
-          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} />
+          <RidePanel key={ride.id} ride={ride} pickup={plan.pickup} dropoff={plan.dropoff} fare={fare} focusTitle={askedHere.current} onRouting={routing} onStartNew={startNewRide} onDone={() => requestAnotherRide(ride.id)} />
         ) : rideRequest ? (
           <RideRequestPanel
             key={rideRequest.id}
@@ -142,17 +160,12 @@ export function Home() {
             focusTitle={askedHere.current}
             onRouting={routing}
             onCancelled={(paused) => {
-              askedHere.current = false;
-              droppedRequest.current = true;
+              leaveJourney();
               cancelled(paused);
             }}
             onStartNew={startNewRide}
             retry={{ ready: sandboxLive, pending, error: requestError, onRetry: request }}
-            onChange={() => {
-              askedHere.current = false;
-              droppedRequest.current = true;
-              setDismissed(rideRequest.id);
-            }}
+            onChange={() => backToPlanner(rideRequest.id)}
           />
         ) : (
           <PlannerPanel
