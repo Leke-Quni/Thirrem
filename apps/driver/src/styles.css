@@ -12,6 +12,7 @@ a, button, summary { touch-action: manipulation; }
 .skip-link:focus-visible { top: 12px; }
 .sec { scroll-margin-top: 16px; }
 .nowrap { white-space: nowrap; }
+.hero .badge { margin-block: 3px; }
 
 .car-body { fill: var(--paint, var(--fg)); }
 .car-glass { fill: var(--map-bg); }

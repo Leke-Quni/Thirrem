@@ -1,3 +1,4 @@
+export { DemoStatusBadge } from './DemoStatusBadge';
 export { Icon, type IconName } from './Icon';
 export { Logo } from './Logo';
 export { RouteLoader } from './RouteLoader';

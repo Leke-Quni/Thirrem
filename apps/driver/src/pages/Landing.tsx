@@ -1,5 +1,6 @@
-import { Logo, ThemeToggle } from '@thirrem/ui';
+import { DemoStatusBadge, Logo, ThemeToggle } from '@thirrem/ui';
 import { Link } from 'react-router-dom';
+import { API_BASE_URL } from '../api-base-url';
 import { RequestIllustration } from '../components/RequestIllustration';
 
 const DRIVE_STEPS = [
@@ -65,7 +66,8 @@ export function Landing() {
             <div>
               <span className="badge">
                 <b /> Simulated demo. No real rides, riders or money.
-              </span>
+              </span>{' '}
+              <DemoStatusBadge apiBaseUrl={API_BASE_URL} />
               <h1>Take the wheel with nobody on board.</h1>
               <p className="lead">
                 The Driver side of a ride-hailing platform set in Gjakova, built to be tried alone. Sign up, add a vehicle and get

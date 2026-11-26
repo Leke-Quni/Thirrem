@@ -26,6 +26,21 @@ test.describe('Driver landing page', () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test('shows the live demo as online when the API health check passes', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('status').filter({ hasText: /live demo is online/i })).toBeVisible();
+  });
+
+  test('shows the live demo as offline but keeps the page working when the API is unreachable', async ({ page }) => {
+    await page.route('**/health', (route) => route.abort());
+    await page.goto('/');
+
+    await expect(page.getByRole('status').filter({ hasText: /live demo is offline/i })).toBeVisible();
+    await page.getByRole('link', { name: 'Sign up', exact: true }).click();
+    await expect(page).toHaveURL(/\/signup$/);
+  });
+
   test('shows the example Ride Request as a picture, with nothing to press', async ({ page }) => {
     await page.goto('/');
 
