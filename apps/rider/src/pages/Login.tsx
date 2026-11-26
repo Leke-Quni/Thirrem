@@ -1,5 +1,5 @@
 import { useAuth } from '../auth/AuthProvider';
-import { AuthForm } from '../components/AuthForm';
+import { AuthForm } from '@thirrem/ui';
 import { AuthLayout } from '../components/auth/AuthLayout';
 
 export function Login() {

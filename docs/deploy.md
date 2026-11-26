@@ -1,6 +1,6 @@
 # Deploying the public demo
 
-The Rider app runs on Vercel Hobby. The backend (API and PostgreSQL with PostGIS) runs on the owner's laptop in Docker Compose and is reached through Tailscale Funnel. Cost is $0 and no card is needed. If any service asks for a card, stop and reassess.
+The Rider and Driver apps run on Vercel Hobby, one project each. The backend (API and PostgreSQL with PostGIS) runs on the owner's laptop in Docker Compose and is reached through Tailscale Funnel. Cost is $0 and no card is needed. If any service asks for a card, stop and reassess.
 
 ## 1. Backend on the laptop
 
@@ -28,18 +28,30 @@ The map and routes use free public services, with no key and no card:
 
 Both can change or disappear. To swap the router, point `OSRM_URL` at any OSRM-compatible server.
 
-## 2. Frontend on Vercel
+## 2. Frontends on Vercel
 
-1. Sign up at vercel.com with GitHub (Hobby plan).
-2. Import the repo as a new project:
-   - Root Directory: `apps/rider`
+Sign up at vercel.com with GitHub (Hobby plan), then create one project for each app from the same repo:
+
+| App | Root Directory | Production URL used below |
+|---|---|---|
+| Rider | `apps/rider` | `https://thirrem-rider.vercel.app` |
+| Driver | `apps/driver` | `https://thirrem-driver.vercel.app` |
+
+If Vercel gives a project another name, use that URL in `CORS_ORIGINS`.
+
+For each project:
+
+1. Import the repo as a new project:
+   - Set the Root Directory from the table.
    - Enable "Include source files outside of the Root Directory in the Build Step" so `packages/*` are available.
-   - `apps/rider/vercel.json` sets the install command (run from the repo root, Yarn workspaces), build command and SPA rewrites.
-3. Environment variables (Production and Preview): `API_BASE_URL` = the Funnel URL, no trailing slash.
+   - The app's `vercel.json` sets the install command (run from the repo root, Yarn workspaces), build command and SPA rewrites.
+2. Environment variables (Production and Preview): `API_BASE_URL` = the Funnel URL, no trailing slash.
+3. Add the project's production and preview origins to `CORS_ORIGINS` in `.env` (see `.env.example`), then `yarn demo:up` again.
 4. Push a branch first and check its preview deploy (landing page, signup, login), then merge to `main` for production.
-5. Add the production `*.vercel.app` URL to `CORS_ORIGINS` in `.env`, then `yarn demo:up` again.
 
-`API_BASE_URL` is read at build time. Locally it stays empty and the Vite dev proxy forwards `/rider` and `/health` to the API on port 5001.
+`yarn demo:up` builds the API from the checked-out code. A new app's signup and login work only once that code includes its API routes, so run it from the branch being previewed, and from `main` after merging.
+
+`API_BASE_URL` is read at build time. Locally it stays empty and each app's Vite dev proxy forwards its own routes (`/rider` or `/driver`) and `/health` to the API on port 5001.
 
 ## 3. Card payments and wallets
 
@@ -61,6 +73,7 @@ Stripe runs in test mode only, and the API refuses live keys.
 | `PHOTON_URL` | API | Photon-compatible geocoder. Default `https://photon.komoot.io`. |
 | `SEARCH_RATE_LIMIT` | API | Place searches per client per minute. Default 60. |
 | `ROUTE_RATE_LIMIT` | API | Route requests per client per minute. Default 30. |
+| `DRIVER_APPROVAL_MS` | API | How long after a vehicle is registered the simulated Admin approves it. Default 10000. |
 | `TRUST_PROXY` | API | `true` behind Funnel so rate limiting sees the real client IP. |
 | `STRIPE_SECRET_KEY` | API | Stripe test mode secret (or restricted) key. Empty turns card payments off. |
 | `STRIPE_PUBLISHABLE_KEY` | API | Stripe test mode publishable key, which the API hands to the Rider app. |

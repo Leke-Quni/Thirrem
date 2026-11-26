@@ -1,6 +1,7 @@
 import '@fontsource-variable/sora';
 import '@fontsource-variable/inter';
 import '@thirrem/ui/theme.css';
+import '@thirrem/ui/pages.css';
 import './styles.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

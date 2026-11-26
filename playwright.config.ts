@@ -7,18 +7,26 @@ export default defineConfig({
   projects: [
     { name: 'api', testMatch: 'smoke.spec.ts', use: { baseURL: 'http://localhost:3100' } },
     { name: 'rider', testMatch: ['rider.spec.ts', 'rider-payment.spec.ts', 'rider-receipts.spec.ts'], use: { baseURL: 'http://localhost:5173' } },
+    { name: 'driver', testMatch: 'driver.spec.ts', use: { baseURL: 'http://localhost:5174' } },
   ],
   webServer: [
     {
       command: 'yarn workspace @thirrem/api build && yarn workspace @thirrem/api migrate && yarn workspace @thirrem/api start',
       url: 'http://localhost:3100/health',
-      env: { PORT: '3100', AUTH_RATE_LIMIT: '10000', OSRM_URL: 'http://127.0.0.1:1', STRIPE_SECRET_KEY: '', STRIPE_PUBLISHABLE_KEY: '' },
+      env: { PORT: '3100', AUTH_RATE_LIMIT: '10000', DRIVER_APPROVAL_MS: '4000', OSRM_URL: 'http://127.0.0.1:1', STRIPE_SECRET_KEY: '', STRIPE_PUBLISHABLE_KEY: '' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {
       command: 'yarn workspace @thirrem/rider dev --port 5173 --strictPort',
       url: 'http://localhost:5173',
+      env: { API_URL: 'http://localhost:3100' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'yarn workspace @thirrem/driver dev --port 5174 --strictPort',
+      url: 'http://localhost:5174',
       env: { API_URL: 'http://localhost:3100' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

@@ -168,6 +168,16 @@ export interface MatchedDriver {
   vehicle: { model: string; colour: string; plate: string };
 }
 
+/** The Driver's own car in their Sandbox. */
+export type DriverCar = Pick<SimulatedDriver, 'lat' | 'lon' | 'heading' | 'vehicleType'>;
+
+/** Opened with `PUT /driver/sandbox`. `GET /driver/sandbox` reads it without counting as activity. */
+export interface DriverSandboxResponse {
+  /** A stopped Sandbox is resumed by opening it again. */
+  status: 'running' | 'stopped';
+  car: DriverCar;
+}
+
 /** The 503 answer to opening a Sandbox when as many as are allowed are already running. */
 export interface SandboxBusyResponse {
   code: 'SANDBOX_LIMIT';
@@ -182,6 +192,25 @@ export interface SandboxLiveMessage {
 
 /** Why the live feed closes: an unknown session, no Sandbox to watch, no token sent in time, or a stopped Sandbox. */
 export type SandboxLiveCloseCode = 4401 | 4404 | 4408 | 4410;
+
+export type ApprovalStatus = 'pending' | 'approved';
+
+export interface DriverVehicle {
+  vehicleType: VehicleType;
+  model: string;
+  colour: string;
+  plate: string;
+  status: ApprovalStatus;
+}
+
+export interface DriverVehicleResponse {
+  vehicle: DriverVehicle | null;
+}
+
+export interface VehicleOptionsResponse {
+  models: Record<VehicleType, string[]>;
+  colours: string[];
+}
 
 export type Wallet = 'apple_pay' | 'google_pay';
 

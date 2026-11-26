@@ -1,9 +1,9 @@
 import { useId, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError } from '../auth/auth-api';
-import { Icon } from './Icon';
-import { Field } from './auth/Field';
-import type { AuthMode } from './auth/AuthTabs';
+import { ApiError } from './auth-api';
+import { Icon } from '../Icon';
+import { Field } from './Field';
+import type { AuthMode } from './AuthTabs';
 
 const MIN_PASSWORD_LENGTH = 8;
 

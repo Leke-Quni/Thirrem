@@ -1,5 +1,1 @@
-import { ApiError } from './auth-api';
-
-export function shouldEndSession(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 401;
-}
+export { shouldEndSession } from '@thirrem/ui';

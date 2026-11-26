@@ -1,0 +1,149 @@
+/* The Driver app is teal where the Rider app is purple. See DESIGN.md. */
+:root { --accent: #14b8a6; --accent-solid: #0f766e; }
+:root[data-theme='dark'] { --accent-text: #2dd4bf; --glow: rgba(20, 184, 166, 0.22); }
+/* Darker on light, so the focus ring keeps 3:1 against the page. */
+:root[data-theme='light'] { --accent: #0d9488; --accent-text: #0f6b64; --glow: rgba(20, 184, 166, 0.16); }
+
+h1, h2, h3 { text-wrap: balance; }
+a, button, summary { touch-action: manipulation; }
+
+.logo-tag { font: 600 12px/1.4 var(--font-body); letter-spacing: 0.02em; color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 999px; padding: 3px 10px; }
+.skip-link { position: absolute; left: 16px; top: -100px; z-index: 2; padding: 10px 16px; border-radius: var(--radius-btn); background: var(--accent-solid); color: var(--on-accent); font-weight: 600; }
+.skip-link:focus-visible { top: 12px; }
+.sec { scroll-margin-top: 16px; }
+.nowrap { white-space: nowrap; }
+.hero .badge { margin-block: 3px; }
+
+.car-body { fill: var(--paint, var(--fg)); }
+.car-glass { fill: var(--map-bg); }
+.mapcard .pinring.faint { opacity: 0.18; }
+.ride.request { background: color-mix(in srgb, var(--bg) 84%, transparent); }
+.request-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.request-head em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--accent-text); }
+.request-stops { list-style: none; padding: 0; margin: 8px 0 12px; display: grid; gap: 4px; }
+.request-stops li { display: flex; align-items: center; gap: 10px; }
+.request-stops li span { margin-left: auto; font-size: 13px; }
+.request-stops i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.request-stops i.square { border-radius: 2px; }
+.request-actions { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.request-actions p { margin-right: auto; min-width: 0; }
+.request-actions b { display: block; font: 600 22px var(--font-head); font-variant-numeric: tabular-nums; }
+.request-actions p span { display: block; font-size: 12px; }
+.ride .request-choice { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); color: var(--fg); font-weight: 600; }
+.ride .request-choice.accept { border-color: transparent; background: var(--accent-solid); color: var(--on-accent); }
+
+.step-soon { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+
+.auth-reach { stroke: var(--accent); opacity: 0.22; }
+.auth-backdrop .car { opacity: 0.8; }
+
+/* The boot shell in index.html copies these sizes, so nothing moves when the page loads. */
+.home-page { --home-card-h: 678px; min-height: 100dvh; }
+.home-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 72px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); }
+.home-bar .links { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.home-bar .who { height: 22px; line-height: 22px; color: var(--muted); font-size: 14px; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-bar .btn { height: 48px; min-width: 104px; padding-block: 0; white-space: nowrap; }
+.auth-card.home-card { width: calc(100% - 32px); min-height: var(--home-card-h); margin: 40px auto 72px; display: flex; flex-direction: column; justify-content: center; }
+.home-card.is-loading { align-items: center; }
+.auth-card.home-card.is-compact { min-height: 0; }
+.home-retry { margin-top: 16px; }
+.who-skeleton, .logout-skeleton { display: block; flex: none; background: linear-gradient(90deg, var(--field-bg), var(--raised), var(--field-bg)); background-size: 200% 100%; animation: home-shimmer 1.2s linear infinite; }
+.who-skeleton { width: 170px; height: 22px; border-radius: 8px; }
+.logout-skeleton { width: 104px; height: 48px; border-radius: 12px; }
+@keyframes home-shimmer { to { background-position: -200% 0; } }
+/* ---- vehicle registration and approval ---- */
+.home-card h1:focus { outline: none; }
+.home-card h1:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.vehicle-form { display: grid; gap: 18px; margin-top: 20px; }
+.vehicle-form fieldset { border: 0; padding: 0; min-width: 0; }
+.vehicle-form legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+.vehicle-form legend span { color: var(--muted); font-weight: 400; }
+.vehicle-picture { display: grid; justify-items: center; gap: 12px; padding: 16px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--map-bg); }
+.vehicle-picture svg { width: 160px; height: 80px; }
+/* An outline keeps black and white paint visible on either map colour. */
+.vehicle-picture .car-body { stroke: var(--muted); stroke-width: 0.8; }
+.plate { font: 600 18px var(--font-head); letter-spacing: 0.06em; font-variant-numeric: tabular-nums; padding: 4px 14px; border-radius: 6px; border: 2px solid #0c1018; border-left: 10px solid var(--accent-solid); background: #fff; color: #0c1018; }
+.type-choices { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.type-choice { position: relative; display: grid; place-items: center; height: 44px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--field-bg); font-size: 14px; color: var(--muted); cursor: pointer; touch-action: manipulation; transition: border-color 0.15s, background-color 0.15s; }
+.type-choice:hover { border-color: color-mix(in srgb, var(--fg) 28%, transparent); color: var(--fg); }
+.type-choice:has(:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--fg); font-weight: 600; }
+.type-choice:has(:focus-visible), .swatch:has(:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.type-choice input, .swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.field-control:has(select)::after { content: ''; position: absolute; right: 18px; top: 19px; width: 7px; height: 7px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg); pointer-events: none; }
+.field select { appearance: none; width: 100%; height: 48px; padding: 0 42px 0 14px; border-radius: var(--radius-btn); border: 1px solid var(--border); background: var(--bg); color: var(--fg); font: inherit; font-size: 15px; cursor: pointer; }
+.field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { position: relative; width: 36px; height: 36px; border-radius: 50%; background: var(--paint); border: 1px solid var(--muted); cursor: pointer; touch-action: manipulation; }
+.swatch:has(:checked) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.home-card [aria-live] p { color: var(--muted); }
+.home-card .vehicle-picture { margin-top: 20px; }
+.home-card .vehicle-form .vehicle-picture { margin-top: 0; }
+.vehicle-name { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 14px; overflow-wrap: anywhere; }
+.vehicle-name strong { color: var(--fg); }
+.vehicle-progress { margin: 18px 0 0; padding-top: 18px; border-top: 1px solid var(--border); }
+
+/* ---- Sandbox: the vehicle beside the map ---- */
+.sandbox { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); align-items: stretch; gap: 16px; box-sizing: border-box; min-height: calc(100dvh - 72px); padding: 16px; }
+.auth-card.home-card.sandbox-panel { width: auto; max-width: none; min-height: 0; margin: 0; justify-content: flex-start; }
+.map-card { position: relative; min-height: 420px; border-radius: var(--radius); overflow: hidden; background: var(--map-bg); border: 1px solid var(--border); box-shadow: var(--shadow), 0 0 80px var(--glow); isolation: isolate; }
+.map-card .driver-map { position: absolute; inset: 0; }
+.driver-map .maplibregl-ctrl-group { background: var(--card); border: 1px solid var(--border); border-radius: 12px; backdrop-filter: blur(18px); box-shadow: none; overflow: hidden; }
+.driver-map .maplibregl-ctrl-group button { width: 40px; height: 40px; }
+.driver-map .maplibregl-ctrl-group button + button { border-top: 1px solid var(--border); }
+:root[data-theme='dark'] .driver-map .maplibregl-ctrl-icon, :root[data-theme='dark'] .driver-map .maplibregl-ctrl-attrib-button { filter: invert(1); }
+.driver-map .maplibregl-ctrl.maplibregl-ctrl-attrib, .driver-map .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--card); color: var(--muted); border: 1px solid var(--border); border-radius: 10px; backdrop-filter: blur(18px); }
+.driver-map .maplibregl-ctrl-attrib a { color: var(--muted); }
+/* The reach rings of the backdrop behind signup, around the Driver's own car. */
+.driver-map .own-car { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; border: 2px solid #fff; background: var(--accent-solid); box-shadow: 0 0 0 28px color-mix(in srgb, var(--accent) 8%, transparent), 0 0 0 29px color-mix(in srgb, var(--accent) 35%, transparent); pointer-events: none; }
+/* A solid disc, a dark edge and a shadow keep every paint colour clear of either map. */
+.own-car svg { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55)); }
+.own-car .car-body { stroke: #0c1018; stroke-width: 2; }
+.own-car .car-glass { fill: #3d4a5c; }
+.map-loading { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; justify-items: center; background: var(--map-bg); }
+.map-status, .map-notice { position: absolute; z-index: 2; top: 10px; left: 10px; box-sizing: border-box; border: 1px solid var(--border); background: var(--card); backdrop-filter: blur(18px); }
+.map-status { max-width: calc(100% - 76px); padding: 8px 12px; border-radius: 12px; font-size: 13px; color: var(--muted); }
+.map-status:empty { opacity: 0; pointer-events: none; }
+.map-action { position: absolute; z-index: 2; left: 50%; bottom: 72px; transform: translateX(-50%); white-space: nowrap; }
+.map-action:hover { transform: translateX(-50%) translateY(-1px); }
+.map-notice { width: min(320px, calc(100% - 76px)); padding: 16px; display: grid; justify-items: start; gap: 8px; border-radius: var(--radius-btn); box-shadow: var(--shadow); }
+.map-notice h2 { margin: 0; font-size: 16px; line-height: 1.3; }
+.map-notice p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; text-wrap: pretty; overflow-wrap: anywhere; }
+.map-notice .btn { margin-top: 4px; min-width: 128px; padding: 9px 16px; font-size: 14px; }
+.btn[aria-disabled='true'] { cursor: progress; filter: none; }
+.map-notice .btn[aria-disabled='true'] { transform: none; }
+.map-action[aria-disabled='true'] { transform: translateX(-50%); }
+.spinner.small { flex: none; width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; border: 2px solid; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.map-notice .spinner, .map-action .spinner { border-color: color-mix(in srgb, var(--on-accent) 35%, transparent); border-top-color: var(--on-accent); }
+.map-failure { position: absolute; inset: auto 10px 44px; margin: 0; z-index: 2; padding: 10px 14px; border-radius: var(--radius-btn); border: 1px solid var(--danger-border); background: var(--bg); color: var(--danger); font-size: 13px; }
+/* Too narrow for two columns, so the map comes first and the vehicle sits underneath. */
+@media (max-width: 860px) {
+  .sandbox { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  .sandbox .map-card { order: -1; min-height: 0; height: 62dvh; }
+}
+
+/* Too narrow to lay the request over the map, so it sits underneath. */
+@media (max-width: 560px) {
+  .mapcard { aspect-ratio: auto; }
+  .mapcard svg { height: 200px; }
+  .ride.request { position: static; margin: 10px; }
+  .request-actions { flex-wrap: wrap; }
+  .request-actions p { flex-basis: 100%; }
+}
+@media (max-width: 560px) { .home-bar .who, .home-bar .who-skeleton { display: none; } }
+@media (max-width: 440px) {
+  .logo { font-size: 19px; gap: 8px; }
+  .home-page { --home-card-h: 654px; }
+  .home-bar { padding: 0 12px; }
+  .home-bar .links { gap: 8px; }
+  .home-bar .btn { min-width: 88px; padding-inline: 12px; }
+  .auth-card.home-card { padding: 24px 20px; }
+  .logout-skeleton { width: 88px; }
+  .wrap > nav { flex-wrap: wrap; gap: 12px; }
+}
+@media (max-width: 360px) {
+  .type-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .swatches { gap: 8px; }
+  .swatch { width: 32px; height: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { .who-skeleton, .logout-skeleton, .spinner.small { animation: none; } }

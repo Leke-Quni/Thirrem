@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { ConflictException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import type { Coordinate, SandboxBusyResponse, SandboxResponse, SimulatedDriver } from '@thirrem/types';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import type { Coordinate, SandboxResponse, SimulatedDriver } from '@thirrem/types';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.provider.js';
 import { CancelHistoryRepository, recordCancel } from '../dispatch/cancel-history.repository.js';
@@ -13,13 +13,11 @@ import { AreaService } from './area.service.js';
 import { distanceM } from './driver-placement.js';
 import { JourneyLedger } from './journey-ledger.js';
 import { RiderActivity } from './rider-activity.js';
+import { sandboxBusy } from './sandbox-busy.js';
 import { driverAt, resumedDriver, sandboxDriver } from './sandbox-driver.js';
 import { discardCutoffMs, runningCutoffMs, sandboxStatus, stoppedAtMs } from './sandbox-lifecycle.js';
 import type { PathPosition } from './road-path.js';
 import { type Sandbox, SandboxRepository } from './sandbox.repository.js';
-
-const BUSY: SandboxBusyResponse = { code: 'SANDBOX_LIMIT', message: 'All Sandboxes are busy right now. Please try again in a few minutes.' };
-const busy = () => new ServiceUnavailableException(BUSY);
 
 interface Changed<T> {
   sandbox: Sandbox;
@@ -174,11 +172,11 @@ export class SandboxService extends RiderActivity {
     // Nothing drives while a Sandbox is stopped, so whether the Rider was picked up is judged as of when it stopped.
     const open = kept?.rideRequest && isOpen(kept.rideRequest, kept.resumedAtMs, Math.min(askedAtMs, stoppedAtMs(kept.lastActiveMs))) ? kept.rideRequest : null;
     // Checked before placing too, so that a Rider who will be turned away costs the road service nothing.
-    if (!reused && !(await this.sandboxes.hasRoom(accountId, runningCutoffMs(this.clock.now().getTime()), this.config.sandboxLimit))) throw busy();
+    if (!reused && !(await this.sandboxes.hasRoom(accountId, runningCutoffMs(this.clock.now().getTime()), this.config.sandboxLimit))) throw sandboxBusy();
     const area = reused ? reused.area : await this.areas.areaAt(centre);
     const now = this.clock.now().getTime();
     const sandbox = reused ? this.active(reused, now) : this.create(centre, area, now);
-    if (!(await this.sandboxes.saveIfRoom(accountId, sandbox, runningCutoffMs(now), this.config.sandboxLimit))) throw busy();
+    if (!(await this.sandboxes.saveIfRoom(accountId, sandbox, runningCutoffMs(now), this.config.sandboxLimit))) throw sandboxBusy();
     await this.ledger.record(accountId, existing, askedAtMs, !reused);
     // Replacing a Sandbox drops its Ride Request, which counts as cancelling it.
     if (fresh && open) await recordCancel(this.cancels, accountId, cancelling(open, askedAtMs), askedAtMs);
