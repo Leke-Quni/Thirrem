@@ -42,3 +42,14 @@ export async function cancelRideRequest(pauseAccepted: boolean): Promise<void> {
   const Failure = body.code === 'CANCEL_WOULD_PAUSE' ? CancelWouldPauseError : ApiError;
   throw new Failure(body.message ?? 'Your Ride Request could not be cancelled. Please try again.', response.status);
 }
+
+/** Asks the Driver to stop and end the Ride early. */
+export async function endRide(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/rider/rides/end`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` },
+  });
+  if (response.ok) return;
+  const body = await response.json().catch(() => ({}));
+  throw new ApiError(body.message ?? 'Your Driver could not be asked to stop. Please try again.', response.status);
+}

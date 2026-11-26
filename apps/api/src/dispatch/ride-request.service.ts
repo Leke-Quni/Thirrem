@@ -12,7 +12,7 @@ import { SandboxService } from '../sandbox/sandbox.service.js';
 import { CancelHistoryRepository, recordCancel } from './cancel-history.repository.js';
 import { cancellation, pausedForS } from './cancel-limit.js';
 import { routed } from './drive.js';
-import { isCompleted, isPickedUp, matchedDriverPosition } from './ride.js';
+import { endRequestedRide, isCompleted, isPickedUp, matchedDriverPosition, rideProgress } from './ride.js';
 import { broadcast, cancelling, firstToAccept, isOpen, isUnderWay, matchedDriverId, type RideRequestInput, rideRequestView, type StoredRideRequest } from './ride-request.js';
 
 /** How long to wait before each further try, when the routing server cannot be had. */
@@ -27,6 +27,12 @@ function requestsPaused(forS: number): HttpException {
     message: `Ride Requests are paused after too many cancellations. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`,
   };
   return new HttpException(body, HttpStatus.TOO_MANY_REQUESTS);
+}
+
+/** The Ride Request that has become a Ride still going at `nowMs`. */
+function currentRide({ rideRequest, resumedAtMs }: Sandbox, nowMs: number): StoredRideRequest {
+  if (!rideRequest || !isPickedUp(rideRequest, resumedAtMs, nowMs) || isCompleted(rideRequest, resumedAtMs, nowMs)) throw new ConflictException('You are not on a Ride.');
+  return rideRequest;
 }
 
 function openRideRequest({ rideRequest, resumedAtMs }: Sandbox, nowMs: number): StoredRideRequest {
@@ -96,13 +102,23 @@ export class RideRequestService {
   /** Looks for the Ride's route to the Drop-off Point again, if the last search found none. */
   async retryRideRoute(accountId: string): Promise<void> {
     const again = await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
-      const current = sandbox.rideRequest;
-      if (!current || !isPickedUp(current, sandbox.resumedAtMs, nowMs) || isCompleted(current, sandbox.resumedAtMs, nowMs)) throw new ConflictException('You are not on a Ride.');
+      const current = currentRide(sandbox, nowMs);
       if (current.rideRoute !== 'unavailable') return { sandbox, result: null };
       const rideRequest: StoredRideRequest = { ...current, rideRoute: null };
       return { sandbox: { ...sandbox, rideRequest }, result: rideRequest };
     });
     if (again) void this.findRideRoute(accountId, again);
+  }
+
+  /** Asks the Driver to end the Ride early. The simulated Driver drives on for a short while, then stops. Asking again changes nothing. */
+  async endRide(accountId: string): Promise<void> {
+    await this.sandboxes.change(accountId, (sandbox, _drivers, nowMs) => {
+      const current = currentRide(sandbox, nowMs);
+      if (current.endRequested) return { sandbox, result: undefined };
+      if (rideProgress(current, sandbox.resumedAtMs, nowMs).status !== 'driving') throw new ConflictException('Your Driver has no route to drive yet.');
+      const rideRequest = endRequestedRide(current, sandbox.resumedAtMs, nowMs, this.config.dispatch.stopMs / 1_000);
+      return { sandbox: { ...sandbox, rideRequest }, result: undefined };
+    });
   }
 
   /** The route to the Pickup Point, and once there is one, the Ride's route, which nothing needs sooner. */

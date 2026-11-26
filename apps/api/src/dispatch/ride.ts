@@ -2,7 +2,7 @@ import type { MatchedDriver, Ride } from '@thirrem/types';
 import { calculateFare } from '../fares/fare-calculator.js';
 import type { FareRates } from '../fares/fare-rates.js';
 import type { PathPosition } from '../sandbox/road-path.js';
-import { driveEnd, driveEndsAtMs, drivenRoute, drivePosition, driveProgress, resumedDrive } from './drive.js';
+import { driveEnd, driveEndsAtMs, drivenRoute, drivePosition, driveProgress, resumedDrive, stoppedDrive, stoppingDrive } from './drive.js';
 import type { StoredRideRequest } from './ride-request.js';
 
 /**
@@ -19,15 +19,28 @@ export function isPickedUp(rideRequest: StoredRideRequest, resumedAtMs: number, 
   return atMs !== undefined && atMs <= nowMs;
 }
 
-/** The Ride's route once it has been driven to the Drop-off Point, which is what completes the Ride. */
+/** What was travelled on a completed Ride: its route driven to the Drop-off Point, or as far as the Driver went before stopping early. */
 function completedRoute(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number) {
   if (!isPickedUp(rideRequest, resumedAtMs, nowMs)) return undefined;
-  return drivenRoute(rideRequest.rideRoute ?? null, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs);
+  const route = rideRequest.rideRoute ?? null;
+  const pickedUpAtMs = pickupAtMs(rideRequest, resumedAtMs)!;
+  return stoppedDrive(route, pickedUpAtMs, resumedAtMs, nowMs) ?? drivenRoute(route, pickedUpAtMs, resumedAtMs, nowMs);
 }
 
-/** Whether the vehicle has reached the Drop-off Point by `nowMs`. */
+/** Whether the Ride has completed by `nowMs`. */
 export function isCompleted(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number): boolean {
   return completedRoute(rideRequest, resumedAtMs, nowMs) !== undefined;
+}
+
+/** The Ride with its Driver asked to end it early: the vehicle stops `stopAfterS` of driving later. Only a Ride on its way can be asked. */
+export function endRequestedRide(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number, stopAfterS: number): StoredRideRequest {
+  const rideRoute = stoppingDrive(rideRequest.rideRoute ?? null, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs, stopAfterS);
+  return { ...rideRequest, rideRoute, endRequested: true };
+}
+
+/** How far the Driver is with the Ride's route at `nowMs`. */
+export function rideProgress(rideRequest: StoredRideRequest, resumedAtMs: number, nowMs: number) {
+  return driveProgress(rideRequest.rideRoute ?? null, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs);
 }
 
 /** Where the matched Driver is at `nowMs`: on its way to the Pickup Point, or on the Ride. Undefined without a Driver due to be matched. */
@@ -41,7 +54,7 @@ export function matchedDriverPosition(rideRequest: StoredRideRequest, resumedAtM
 
 /** The Ride as the Rider is told of it at `nowMs`, which is only once they have been picked up. */
 export function rideView(rideRequest: StoredRideRequest, driver: MatchedDriver, rates: FareRates, resumedAtMs: number, nowMs: number): Ride {
-  const { id, vehicleType, pickup, dropoff, rideRoute = null } = rideRequest;
+  const { id, vehicleType, pickup, dropoff, endRequested = false } = rideRequest;
   const completed = completedRoute(rideRequest, resumedAtMs, nowMs);
   return {
     id,
@@ -49,7 +62,8 @@ export function rideView(rideRequest: StoredRideRequest, driver: MatchedDriver, 
     pickup,
     dropoff,
     driver,
-    progress: driveProgress(rideRoute, pickupAtMs(rideRequest, resumedAtMs)!, resumedAtMs, nowMs),
+    progress: rideProgress(rideRequest, resumedAtMs, nowMs),
+    endRequested,
     finalFare: completed ? calculateFare(rates, vehicleType, completed) : null,
   };
 }

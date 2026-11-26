@@ -40,7 +40,7 @@ describe('Cancelling a Ride Request', () => {
       roads,
       pacer: new InstantPacer(),
       areas: new FixedAreaRepository({ centre: pickup, stations: [station], paths: [] }),
-      config: { dispatch: { acceptWindowMs: 9_000, acceptAfterMs: { min: ACCEPT_MS, max: ACCEPT_MS }, boardingMs } },
+      config: { dispatch: { acceptWindowMs: 9_000, acceptAfterMs: { min: ACCEPT_MS, max: ACCEPT_MS }, boardingMs, stopMs: 5_000 } },
     });
     apps.push(app);
     const server = app.getHttpServer();
