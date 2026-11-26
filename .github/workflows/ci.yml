@@ -6,7 +6,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     services:
-      postgres:
+      postgres: &postgres
         image: postgres:17
         env:
           POSTGRES_USER: thirrem
@@ -28,5 +28,22 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn test:api
       - run: yarn test:rider
+
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      # A failing shard does not stop the others, so one run reports every failure.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres: *postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --frozen-lockfile
       - run: yarn playwright install --with-deps chromium
-      - run: yarn test:e2e
+      - run: yarn test:e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
